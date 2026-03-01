@@ -10,18 +10,35 @@ interface RunButtonProps {
   variant?: "default" | "outline" | "secondary";
 }
 
-export default function RunButton({ label, functionName, body, variant = "default" }: RunButtonProps) {
+type RunResult = { ok: boolean; data?: any } | null;
+
+export default function RunButton({
+  label,
+  functionName,
+  body,
+  variant = "default",
+}: RunButtonProps) {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; data?: any } | null>(null);
+  const [result, setResult] = useState<RunResult>(null);
 
   const run = async () => {
     setLoading(true);
     setResult(null);
     try {
       const data = await invokeEdgeFunction(functionName, body);
-      setResult({ ok: data.ok !== false, data });
+
+      // Strict: only ok:true counts as success.
+      const ok = data && data.ok === true;
+
+      // If the function omitted `ok`, force it visible.
+      const normalized =
+        data && typeof data.ok === "boolean"
+          ? data
+          : { ok: false, error: "missing_ok_in_response", raw: data };
+
+      setResult({ ok, data: normalized });
     } catch (err) {
-      setResult({ ok: false, data: { error: String(err) } });
+      setResult({ ok: false, data: { ok: false, error: String(err) } });
     } finally {
       setLoading(false);
     }
@@ -41,7 +58,11 @@ export default function RunButton({ label, functionName, body, variant = "defaul
       {result && (
         <div className={`text-xs font-mono p-2 rounded ${result.ok ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
           <div className="flex items-center gap-1 mb-1">
-            {result.ok ? <Check className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+            {result.ok ? (
+              <Check className="h-3 w-3" />
+            ) : (
+              <AlertCircle className="h-3 w-3" />
+            )}
             {result.ok ? "Success" : "Error"}
           </div>
           <pre className="whitespace-pre-wrap text-[10px] opacity-80 max-h-32 overflow-auto">

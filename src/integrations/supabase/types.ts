@@ -257,6 +257,459 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_bets: {
+        Row: {
+          created_at: string
+          game_id: string
+          id: string
+          leg_type: string
+          line_at_bet: number | null
+          notes: string | null
+          placed_ts: string
+          price: number
+          profit_units: number | null
+          result: string | null
+          side: string
+          system_code: string
+          units: number
+        }
+        Insert: {
+          created_at?: string
+          game_id: string
+          id?: string
+          leg_type: string
+          line_at_bet?: number | null
+          notes?: string | null
+          placed_ts: string
+          price: number
+          profit_units?: number | null
+          result?: string | null
+          side: string
+          system_code: string
+          units: number
+        }
+        Update: {
+          created_at?: string
+          game_id?: string
+          id?: string
+          leg_type?: string
+          line_at_bet?: number | null
+          notes?: string | null
+          placed_ts?: string
+          price?: number
+          profit_units?: number | null
+          result?: string | null
+          side?: string
+          system_code?: string
+          units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_bets_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_bets_system_code_fkey"
+            columns: ["system_code"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_systems"
+            referencedColumns: ["system_code"]
+          },
+        ]
+      }
+      pers_sys_games: {
+        Row: {
+          away_score: number | null
+          away_team_id: string
+          created_at: string
+          game_key: string
+          home_score: number | null
+          home_team_id: string
+          id: string
+          is_draw: boolean
+          loser_team_id: string | null
+          margin_home: number | null
+          oddsapi_event_id: string | null
+          round: number | null
+          season: number
+          squiggle_game_id: string | null
+          start_time_aet: string
+          status: string
+          updated_at: string
+          venue: string | null
+          winner_team_id: string | null
+        }
+        Insert: {
+          away_score?: number | null
+          away_team_id: string
+          created_at?: string
+          game_key: string
+          home_score?: number | null
+          home_team_id: string
+          id?: string
+          is_draw?: boolean
+          loser_team_id?: string | null
+          margin_home?: number | null
+          oddsapi_event_id?: string | null
+          round?: number | null
+          season: number
+          squiggle_game_id?: string | null
+          start_time_aet: string
+          status?: string
+          updated_at?: string
+          venue?: string | null
+          winner_team_id?: string | null
+        }
+        Update: {
+          away_score?: number | null
+          away_team_id?: string
+          created_at?: string
+          game_key?: string
+          home_score?: number | null
+          home_team_id?: string
+          id?: string
+          is_draw?: boolean
+          loser_team_id?: string | null
+          margin_home?: number | null
+          oddsapi_event_id?: string | null
+          round?: number | null
+          season?: number
+          squiggle_game_id?: string | null
+          start_time_aet?: string
+          status?: string
+          updated_at?: string
+          venue?: string | null
+          winner_team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_games_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_games_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_games_loser_team_id_fkey"
+            columns: ["loser_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_games_winner_team_id_fkey"
+            columns: ["winner_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pers_sys_market_snapshots: {
+        Row: {
+          agg_method: string
+          away_line: number | null
+          away_line_price: number | null
+          away_price: number | null
+          books_used: Json
+          created_at: string
+          game_id: string
+          home_line: number | null
+          home_line_price: number | null
+          home_price: number | null
+          id: string
+          market_type: string
+          snapshot_ts: string
+          snapshot_type: string
+        }
+        Insert: {
+          agg_method?: string
+          away_line?: number | null
+          away_line_price?: number | null
+          away_price?: number | null
+          books_used?: Json
+          created_at?: string
+          game_id: string
+          home_line?: number | null
+          home_line_price?: number | null
+          home_price?: number | null
+          id?: string
+          market_type: string
+          snapshot_ts: string
+          snapshot_type: string
+        }
+        Update: {
+          agg_method?: string
+          away_line?: number | null
+          away_line_price?: number | null
+          away_price?: number | null
+          books_used?: Json
+          created_at?: string
+          game_id?: string
+          home_line?: number | null
+          home_line_price?: number | null
+          home_price?: number | null
+          id?: string
+          market_type?: string
+          snapshot_ts?: string
+          snapshot_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_market_snapshots_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pers_sys_round_context: {
+        Row: {
+          asof_ts: string
+          id: string
+          percentage_8th: number
+          points_8th: number
+          round: number
+          season: number
+          updated_at: string
+        }
+        Insert: {
+          asof_ts: string
+          id?: string
+          percentage_8th: number
+          points_8th: number
+          round: number
+          season: number
+          updated_at?: string
+        }
+        Update: {
+          asof_ts?: string
+          id?: string
+          percentage_8th?: number
+          points_8th?: number
+          round?: number
+          season?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pers_sys_season_meta: {
+        Row: {
+          created_at: string
+          gf_winner_team_id: string
+          season: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gf_winner_team_id: string
+          season: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gf_winner_team_id?: string
+          season?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_season_meta_gf_winner_team_id_fkey"
+            columns: ["gf_winner_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pers_sys_signals: {
+        Row: {
+          created_at: string
+          game_id: string
+          id: string
+          pass: boolean
+          reason: Json
+          snapshot_type: string
+          system_code: string
+        }
+        Insert: {
+          created_at?: string
+          game_id: string
+          id?: string
+          pass: boolean
+          reason?: Json
+          snapshot_type: string
+          system_code: string
+        }
+        Update: {
+          created_at?: string
+          game_id?: string
+          id?: string
+          pass?: boolean
+          reason?: Json
+          snapshot_type?: string
+          system_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_signals_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_signals_system_code_fkey"
+            columns: ["system_code"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_systems"
+            referencedColumns: ["system_code"]
+          },
+        ]
+      }
+      pers_sys_systems: {
+        Row: {
+          active: boolean
+          created_at: string
+          locked: boolean
+          name: string
+          params: Json
+          staking_policy: string
+          system_code: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          locked?: boolean
+          name: string
+          params?: Json
+          staking_policy: string
+          system_code: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          locked?: boolean
+          name?: string
+          params?: Json
+          staking_policy?: string
+          system_code?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pers_sys_team_state: {
+        Row: {
+          asof_ts: string
+          draws: number
+          game_id: string
+          id: string
+          losses: number
+          percentage: number
+          played: number
+          points_against: number
+          points_for: number
+          round: number | null
+          season: number
+          streak: number
+          team_id: string
+          updated_at: string
+          wins: number
+        }
+        Insert: {
+          asof_ts: string
+          draws: number
+          game_id: string
+          id?: string
+          losses: number
+          percentage: number
+          played: number
+          points_against: number
+          points_for: number
+          round?: number | null
+          season: number
+          streak: number
+          team_id: string
+          updated_at?: string
+          wins: number
+        }
+        Update: {
+          asof_ts?: string
+          draws?: number
+          game_id?: string
+          id?: string
+          losses?: number
+          percentage?: number
+          played?: number
+          points_against?: number
+          points_for?: number
+          round?: number | null
+          season?: number
+          streak?: number
+          team_id?: string
+          updated_at?: string
+          wins?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_team_state_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_team_state_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pers_sys_teams: {
+        Row: {
+          active: boolean
+          canonical_name: string
+          created_at: string
+          id: string
+          oddsapi_name: string | null
+          squiggle_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          canonical_name: string
+          created_at?: string
+          id?: string
+          oddsapi_name?: string | null
+          squiggle_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          canonical_name?: string
+          created_at?: string
+          id?: string
+          oddsapi_name?: string | null
+          squiggle_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       processing_queue: {
         Row: {
           enqueued_at: string

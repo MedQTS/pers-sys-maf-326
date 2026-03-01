@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
 
       for (const game of upcomingGames) {
         const round = game.round;
-        if (!round) continue;
+        if (round === null || round === undefined) continue;
 
         // Check excluded seasons
         if (params.exclude_seasons?.includes(season)) continue;

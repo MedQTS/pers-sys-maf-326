@@ -15,6 +15,10 @@ export default function WeekView() {
   async function loadData() {
     setLoading(true);
     const season = new Date().getFullYear();
+    const now = new Date();
+    const end = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const nowIso = now.toISOString();
+    const endIso = end.toISOString();
 
     const { data: gamesData } = await supabase
       .from("pers_sys_games")
@@ -24,9 +28,11 @@ export default function WeekView() {
         away_team:pers_sys_teams!pers_sys_games_away_team_id_fkey(canonical_name)
       `)
       .eq("season", season)
-      .eq("status", "SCHEDULED")
+      .gte("start_time_aet", nowIso)
+      .lte("start_time_aet", endIso)
+      .in("status", ["SCHEDULED", "LIVE"])
       .order("start_time_aet", { ascending: true })
-      .limit(30);
+      .limit(60);
 
     setGames(gamesData || []);
 

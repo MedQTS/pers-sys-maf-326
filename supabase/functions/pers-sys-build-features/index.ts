@@ -6,6 +6,34 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+type BuildFeaturesResponse =
+  | {
+      ok: true;
+      season: number;
+      states_upserted: number;
+      contexts_upserted: number;
+      season_meta_seeded: boolean;
+      diagnostics: {
+        total_games: number;
+        completed_games: number;
+        upcoming_games: number;
+        target_games: number;
+      };
+    }
+  | {
+      ok: false;
+      season?: number;
+      error: string;
+      details?: any;
+    };
+
+function jsonResponse(body: BuildFeaturesResponse, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
@@ -15,32 +43,127 @@ Deno.serve(async (req) => {
       season: new Date().getFullYear(),
     }));
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const url = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!url || !serviceKey) {
+      return jsonResponse({
+        ok: false,
+        error: "missing_env",
+        details: { has_url: !!url, has_service_role_key: !!serviceKey },
+      });
+    }
+
+    const supabase = createClient(url, serviceKey);
 
     // Get all games for season ordered by time
-    const { data: allGames } = await supabase
+    const { data: allGames, error: gamesErr } = await supabase
       .from("pers_sys_games")
       .select("*")
       .eq("season", season)
       .order("start_time_aet", { ascending: true });
 
+    if (gamesErr) {
+      return jsonResponse({
+        ok: false,
+        season,
+        error: "games_select_failed",
+        details: gamesErr,
+      });
+    }
+
     if (!allGames || allGames.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: true, states_upserted: 0, contexts_upserted: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({
+        ok: true,
+        season,
+        states_upserted: 0,
+        contexts_upserted: 0,
+        season_meta_seeded: false,
+        diagnostics: {
+          total_games: 0,
+          completed_games: 0,
+          upcoming_games: 0,
+          target_games: 0,
+        },
+      });
     }
 
     // Get all teams
-    const { data: teams } = await supabase
+    const { data: teams, error: teamsErr } = await supabase
       .from("pers_sys_teams")
       .select("id, canonical_name");
-    const teamMap = Object.fromEntries(
+
+    if (teamsErr) {
+      return jsonResponse({
+        ok: false,
+        season,
+        error: "teams_select_failed",
+        details: teamsErr,
+      });
+    }
+
+    const teamById = new Map<string, string>(
       (teams || []).map((t) => [t.id, t.canonical_name])
     );
+
+    // Seed last season GF winner in pers_sys_season_meta if missing:
+    // User-approved default: Brisbane Lions (matches seeded team canonical_name).
+    const lastSeason = season - 1;
+    let seasonMetaSeeded = false;
+
+    {
+      const { data: metaRow, error: metaErr } = await supabase
+        .from("pers_sys_season_meta")
+        .select("season, gf_winner_team_id")
+        .eq("season", lastSeason)
+        .maybeSingle();
+
+      if (metaErr) {
+        return jsonResponse({
+          ok: false,
+          season,
+          error: "season_meta_select_failed",
+          details: metaErr,
+        });
+      }
+
+      if (!metaRow) {
+        const brisbane =
+          (teams || []).find(
+            (t) => (t.canonical_name || "").toLowerCase() === "brisbane lions"
+          ) ||
+          (teams || []).find((t) =>
+            (t.canonical_name || "").toLowerCase().includes("brisbane")
+          );
+
+        if (!brisbane) {
+          return jsonResponse({
+            ok: false,
+            season,
+            error: "gf_winner_team_not_found",
+            details: { attempted: ["Brisbane Lions", "*brisbane*"] },
+          });
+        }
+
+        const { error: upsertMetaErr } = await supabase
+          .from("pers_sys_season_meta")
+          .upsert(
+            { season: lastSeason, gf_winner_team_id: brisbane.id },
+            { onConflict: "season" }
+          );
+
+        if (upsertMetaErr) {
+          return jsonResponse({
+            ok: false,
+            season,
+            error: "season_meta_upsert_failed",
+            details: upsertMetaErr,
+          });
+        }
+
+        seasonMetaSeeded = true;
+      }
+    }
 
     // Separate completed and upcoming
     const completed = allGames.filter((g) => g.status === "FT");
@@ -59,15 +182,19 @@ Deno.serve(async (req) => {
 
     const teamStats: Record<string, TeamStats> = {};
     const initStats = (): TeamStats => ({
-      played: 0, wins: 0, losses: 0, draws: 0,
-      points_for: 0, points_against: 0, results: [],
+      played: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      points_for: 0,
+      points_against: 0,
+      results: [],
     });
 
-    // Process completed games in order to build state
+    // Process games in order to snapshot pre-game states
     const gameStates: Record<string, Record<string, TeamStats>> = {};
 
     for (const game of allGames) {
-      // Snapshot current state BEFORE this game for both teams
       const homeId = game.home_team_id;
       const awayId = game.away_team_id;
 
@@ -76,12 +203,22 @@ Deno.serve(async (req) => {
 
       // Store pre-game state
       gameStates[game.id] = {
-        [homeId]: { ...teamStats[homeId], results: [...teamStats[homeId].results] },
-        [awayId]: { ...teamStats[awayId], results: [...teamStats[awayId].results] },
+        [homeId]: {
+          ...teamStats[homeId],
+          results: [...teamStats[homeId].results],
+        },
+        [awayId]: {
+          ...teamStats[awayId],
+          results: [...teamStats[awayId].results],
+        },
       };
 
       // If game is complete, update running totals
-      if (game.status === "FT" && game.home_score !== null && game.away_score !== null) {
+      if (
+        game.status === "FT" &&
+        game.home_score !== null &&
+        game.away_score !== null
+      ) {
         const hs = game.home_score;
         const as_ = game.away_score;
 
@@ -124,8 +261,10 @@ Deno.serve(async (req) => {
       return last === "W" ? streak : last === "L" ? -streak : 0;
     }
 
-    // Upsert team_state for upcoming games (and all games with pre-game state)
+    // Upsert team_state for upcoming games (and if none, last 36 games)
     let statesUpserted = 0;
+    const writeErrors: any[] = [];
+
     const targetGames = upcoming.length > 0 ? upcoming : allGames.slice(-36);
 
     for (const game of targetGames) {
@@ -136,9 +275,12 @@ Deno.serve(async (req) => {
         const s = states[teamId];
         if (!s) continue;
 
-        const pct = s.points_against > 0
-          ? Number(((s.points_for / s.points_against) * 100).toFixed(2))
-          : s.points_for > 0 ? 999.99 : 100.0;
+        const pct =
+          s.points_against > 0
+            ? Number(((s.points_for / s.points_against) * 100).toFixed(2))
+            : s.points_for > 0
+            ? 999.99
+            : 100.0;
 
         const { error } = await supabase.from("pers_sys_team_state").upsert(
           {
@@ -158,25 +300,61 @@ Deno.serve(async (req) => {
           },
           { onConflict: "game_id,team_id" }
         );
-        if (!error) statesUpserted++;
+
+        if (error) {
+          if (writeErrors.length < 10) {
+            writeErrors.push({
+              table: "pers_sys_team_state",
+              game_id: game.id,
+              team_id: teamId,
+              team_name: teamById.get(teamId) || null,
+              error,
+            });
+          }
+        } else {
+          statesUpserted++;
+        }
       }
     }
 
+    // If we had games but wrote 0 states, treat as hard failure
+    if (statesUpserted === 0) {
+      return jsonResponse({
+        ok: false,
+        season,
+        error: "team_state_upserted_0",
+        details: {
+          total_games: allGames.length,
+          completed_games: completed.length,
+          upcoming_games: upcoming.length,
+          target_games: targetGames.length,
+          sample_errors: writeErrors,
+        },
+      });
+    }
+
     // Build round context (8th place cutline)
-    // Get unique rounds with completed games
-    const roundNumbers = [...new Set(completed.map((g) => g.round).filter(Boolean))] as number[];
+    const roundNumbers = [
+      ...new Set(completed.map((g) => g.round).filter(Boolean)),
+    ] as number[];
+
     let contextsUpserted = 0;
 
-    // Build ladder at each round end
     for (const round of roundNumbers) {
-      // Games completed up to and including this round
-      const gamesUpTo = completed.filter((g) => g.round !== null && g.round <= round);
+      const gamesUpTo = completed.filter(
+        (g) => g.round !== null && g.round <= round
+      );
 
-      const ladder: Record<string, { wins: number; draws: number; pf: number; pa: number }> = {};
+      const ladder: Record<
+        string,
+        { wins: number; draws: number; pf: number; pa: number }
+      > = {};
 
       for (const g of gamesUpTo) {
-        if (!ladder[g.home_team_id]) ladder[g.home_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
-        if (!ladder[g.away_team_id]) ladder[g.away_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+        if (!ladder[g.home_team_id])
+          ladder[g.home_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+        if (!ladder[g.away_team_id])
+          ladder[g.away_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
 
         const hs = g.home_score ?? 0;
         const as_ = g.away_score ?? 0;
@@ -193,7 +371,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Sort by premiership points (4 per win, 2 per draw), then percentage
       const sorted = Object.entries(ladder)
         .map(([tid, s]) => ({
           tid,
@@ -218,15 +395,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, season, states_upserted: statesUpserted, contexts_upserted: contextsUpserted }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({
+      ok: true,
+      season,
+      states_upserted: statesUpserted,
+      contexts_upserted: contextsUpserted,
+      season_meta_seeded: seasonMetaSeeded,
+      diagnostics: {
+        total_games: allGames.length,
+        completed_games: completed.length,
+        upcoming_games: upcoming.length,
+        target_games: targetGames.length,
+      },
+    });
   } catch (err) {
     console.error(err);
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return jsonResponse(
+      { ok: false, error: "unhandled_exception", details: String(err) },
+      500
     );
   }
 });

@@ -1,1 +1,16 @@
 project_id = "aaktyzhpsjcczskmmdoq"
+
+[functions.pers-sys-pull-squiggle]
+verify_jwt = false
+
+[functions.pers-sys-build-features]
+verify_jwt = false
+
+[functions.pers-sys-pull-odds-snapshot]
+verify_jwt = false
+
+[functions.pers-sys-evaluate-systems]
+verify_jwt = false
+
+[functions.pers-sys-settle]
+verify_jwt = false

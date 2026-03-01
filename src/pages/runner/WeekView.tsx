@@ -7,6 +7,8 @@ export default function WeekView() {
   const [games, setGames] = useState<any[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sigError, setSigError] = useState<any>(null);
+  const [debug, setDebug] = useState<{ passTrue: number; passAll: number }>({ passTrue: 0, passAll: 0 });
 
   useEffect(() => {
     loadData();
@@ -38,12 +40,20 @@ export default function WeekView() {
 
     if (gamesData && gamesData.length > 0) {
       const gameIds = gamesData.map((g) => g.id);
-      const { data: sigData } = await supabase
+      const { data: sigPass, error: sigPassErr } = await supabase
         .from("pers_sys_signals")
         .select("*")
         .in("game_id", gameIds)
         .eq("pass", true);
-      setSignals(sigData || []);
+
+      const { data: sigAll, error: sigAllErr } = await supabase
+        .from("pers_sys_signals")
+        .select("id,game_id,pass,system_code")
+        .in("game_id", gameIds);
+
+      setSigError(sigPassErr || sigAllErr || null);
+      setSignals(sigPass || []);
+      setDebug({ passTrue: (sigPass || []).length, passAll: (sigAll || []).length });
     }
     setLoading(false);
   }
@@ -61,6 +71,13 @@ export default function WeekView() {
     <RunnerLayout>
       <div className="space-y-6">
         <h1 className="text-2xl font-bold font-mono">This Week</h1>
+
+        {!loading && (
+          <div className="text-[11px] font-mono text-muted-foreground">
+            <div>debug: games={games.length} pass_true_signals={debug.passTrue} all_signals={debug.passAll} qualified_games={qualifiedGames.length}</div>
+            {sigError && <div className="text-destructive">signals_error: {JSON.stringify(sigError)}</div>}
+          </div>
+        )}
 
         {loading ? (
           <p className="text-muted-foreground text-sm">Loading…</p>

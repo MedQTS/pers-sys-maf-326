@@ -52,10 +52,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Parse date - Squiggle gives UTC ISO or local with tz
-      const startTime = g.date
-        ? new Date(g.date).toISOString()
-        : new Date(g.localtime || g.date).toISOString();
+      // Parse date - Squiggle 'date' is UTC ISO. Prefer it. Fallback to unixtime if needed.
+      let startTime: string | null = null;
+      if (g.date) {
+        startTime = new Date(g.date).toISOString();
+      } else if (g.unixtime) {
+        startTime = new Date(Number(g.unixtime) * 1000).toISOString();
+      } else {
+        // As a last resort, skip malformed rows
+        skipped++;
+        continue;
+      }
 
       // Determine status
       let status = "SCHEDULED";
@@ -85,7 +92,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      const gameKey = `${season}_R${g.round ?? 0}_${hteam}_v_${ateam}`;
+      const roundStr = g.round ?? "NA";
+      const gameIdStr = g.id ? String(g.id) : "NA";
+      const gameKey = `${season}_R${roundStr}_G${gameIdStr}`;
 
       const { error } = await supabase.from("pers_sys_games").upsert(
         {
@@ -104,8 +113,9 @@ Deno.serve(async (req) => {
           is_draw: isDraw,
           squiggle_game_id: String(g.id),
           game_key: gameKey,
+          updated_at: new Date().toISOString(),
         },
-        { onConflict: "squiggle_game_id" }
+        { onConflict: "game_key" }
       );
 
       if (error) {

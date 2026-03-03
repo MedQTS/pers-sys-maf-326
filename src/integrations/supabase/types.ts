@@ -663,6 +663,7 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
+          description: string | null
           locked: boolean
           name: string
           params: Json
@@ -673,6 +674,7 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
+          description?: string | null
           locked?: boolean
           name: string
           params?: Json
@@ -683,6 +685,7 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
+          description?: string | null
           locked?: boolean
           name?: string
           params?: Json

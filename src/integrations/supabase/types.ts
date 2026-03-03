@@ -1567,6 +1567,23 @@ export type Database = {
       }
     }
     Functions: {
+      _round_to_5: { Args: { x: number }; Returns: number }
+      _round_to_quarter: { Args: { x: number }; Returns: number }
+      accept_leg_create_bet: {
+        Args: {
+          p_exec_best_book: string
+          p_exec_best_price: number
+          p_game_id: string
+          p_leg_type: string
+          p_line_at_bet: number
+          p_ref_price: number
+          p_side: string
+          p_snapshot_type: string
+          p_system_code: string
+          p_units: number
+        }
+        Returns: Json
+      }
       next_sidehustler_doc_number: {
         Args: { p_doc_type: string; p_year: number }
         Returns: string

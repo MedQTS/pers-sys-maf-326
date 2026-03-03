@@ -6,6 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Stage 3: Reference vs Execution book split
+const REFERENCE_BOOKS = [
+  "tab",
+  "pointsbetau",
+  "neds",
+  "unibet",
+  "betr_au",
+  "sportsbet",
+  "ladbrokes_au",
+] as const;
+
+const EXECUTION_BOOKS = ["tab", "pointsbetau", "neds", "unibet", "betr_au"] as const;
+
+const referenceSet = new Set<string>(REFERENCE_BOOKS as unknown as string[]);
+const executionSet = new Set<string>(EXECUTION_BOOKS as unknown as string[]);
+
 function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -104,6 +120,9 @@ Deno.serve(async (req) => {
 
     const snapshotTs = now.toISOString();
     let snapshotsStored = 0;
+    const observedBookKeys = new Set<string>();
+    const usedReferenceKeys = new Set<string>();
+    const usedExecutionKeys = new Set<string>();
 
     // Try to match odds events to our games
     for (const game of eligibleGames) {
@@ -150,6 +169,12 @@ Deno.serve(async (req) => {
       const awaySpreadPrices: number[] = [];
 
       for (const bk of bookmakers) {
+        const bkKey = String(bk.key || "").trim();
+        if (bkKey) {
+          observedBookKeys.add(bkKey);
+          if (referenceSet.has(bkKey)) usedReferenceKeys.add(bkKey);
+          if (executionSet.has(bkKey)) usedExecutionKeys.add(bkKey);
+        }
         for (const m of bk.markets || []) {
           if (m.key === "h2h") {
             for (const o of m.outcomes || []) {
@@ -250,6 +275,9 @@ Deno.serve(async (req) => {
         snapshot_type: snapshotType,
         eligible: eligibleGames.length,
         snapshots_stored: snapshotsStored,
+        observed_bookmaker_keys: Array.from(observedBookKeys).sort(),
+        reference_books_used: Array.from(usedReferenceKeys).sort(),
+        execution_books_used: Array.from(usedExecutionKeys).sort(),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

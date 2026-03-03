@@ -187,6 +187,18 @@ Deno.serve(async (req) => {
             reason.bet_side = "HOME";
             reason.bet_market = "H2H";
             reason.bet_price = openH2H.home_price;
+
+            // Stage 4: attach execution best (H2H)
+            reason.exec_best_home_price = openH2H.exec_best_home_price ?? null;
+            reason.exec_best_home_book = openH2H.exec_best_home_book ?? null;
+            reason.exec_best_away_price = openH2H.exec_best_away_price ?? null;
+            reason.exec_best_away_book = openH2H.exec_best_away_book ?? null;
+
+            reason.ref_books_observed = openH2H.ref_books_observed ?? [];
+            reason.exec_books_observed = openH2H.exec_books_observed ?? [];
+
+            reason.exec_available =
+              !!openH2H.exec_best_home_price && !!openH2H.exec_best_home_book;
           }
 
           const { error } = await supabase.from("pers_sys_signals").upsert(
@@ -240,6 +252,22 @@ Deno.serve(async (req) => {
               reason.bet_side = gfIsHome ? "AWAY_LINE" : "HOME_LINE";
               reason.bet_line = gfIsHome ? openLine.away_line : openLine.home_line;
               reason.bet_price = gfIsHome ? openLine.away_line_price : openLine.home_line_price;
+
+              // Stage 4: attach execution best (LINE)
+              reason.exec_best_home_line = openLine.exec_best_home_line ?? null;
+              reason.exec_best_home_line_price = openLine.exec_best_home_line_price ?? null;
+              reason.exec_best_home_line_book = openLine.exec_best_home_line_book ?? null;
+
+              reason.exec_best_away_line = openLine.exec_best_away_line ?? null;
+              reason.exec_best_away_line_price = openLine.exec_best_away_line_price ?? null;
+              reason.exec_best_away_line_book = openLine.exec_best_away_line_book ?? null;
+
+              reason.ref_books_observed = openLine.ref_books_observed ?? [];
+              reason.exec_books_observed = openLine.exec_books_observed ?? [];
+
+              reason.exec_available =
+                !!openLine.exec_best_away_line_price &&
+                !!openLine.exec_best_away_line_book;
             }
           }
 
@@ -270,6 +298,24 @@ Deno.serve(async (req) => {
             reason.away_pct = awayState.percentage;
             reason.home_streak = homeState.streak;
             reason.away_streak = awayState.streak;
+          }
+
+          if (openLine) {
+            // Stage 4: attach execution best (LINE)
+            reason.exec_best_home_line = openLine.exec_best_home_line ?? null;
+            reason.exec_best_home_line_price = openLine.exec_best_home_line_price ?? null;
+            reason.exec_best_home_line_book = openLine.exec_best_home_line_book ?? null;
+
+            reason.exec_best_away_line = openLine.exec_best_away_line ?? null;
+            reason.exec_best_away_line_price = openLine.exec_best_away_line_price ?? null;
+            reason.exec_best_away_line_book = openLine.exec_best_away_line_book ?? null;
+
+            reason.ref_books_observed = openLine.ref_books_observed ?? [];
+            reason.exec_books_observed = openLine.exec_books_observed ?? [];
+
+            reason.exec_available =
+              !!openLine.exec_best_away_line_price &&
+              !!openLine.exec_best_away_line_book;
           }
 
           const { error } = await supabase.from("pers_sys_signals").upsert(

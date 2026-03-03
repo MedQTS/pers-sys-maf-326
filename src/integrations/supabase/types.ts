@@ -259,6 +259,8 @@ export type Database = {
       }
       pers_sys_bets: {
         Row: {
+          bankroll_snapshot: number | null
+          book: string | null
           created_at: string
           game_id: string
           id: string
@@ -270,10 +272,14 @@ export type Database = {
           profit_units: number | null
           result: string | null
           side: string
+          stake_amount: number
+          status: string
           system_code: string
           units: number
         }
         Insert: {
+          bankroll_snapshot?: number | null
+          book?: string | null
           created_at?: string
           game_id: string
           id?: string
@@ -285,10 +291,14 @@ export type Database = {
           profit_units?: number | null
           result?: string | null
           side: string
+          stake_amount?: number
+          status?: string
           system_code: string
           units: number
         }
         Update: {
+          bankroll_snapshot?: number | null
+          book?: string | null
           created_at?: string
           game_id?: string
           id?: string
@@ -300,6 +310,8 @@ export type Database = {
           profit_units?: number | null
           result?: string | null
           side?: string
+          stake_amount?: number
+          status?: string
           system_code?: string
           units?: number
         }

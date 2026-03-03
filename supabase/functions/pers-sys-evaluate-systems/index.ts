@@ -147,6 +147,115 @@ function buildLegLine(args: {
   };
 }
 
+type Outcome = "WIN" | "LOSS" | "DRAW" | "UNKNOWN";
+
+// Most recent completed outcome for a team before a given time (supports DRAW)
+async function getPriorOutcomeForTeam(args: {
+  supabase: any;
+  season: number;
+  teamId: string;
+  gameStartIso: string;
+}): Promise<Outcome> {
+  const { supabase, season, teamId, gameStartIso } = args;
+
+  const { data: priorGames, error } = await supabase
+    .from("pers_sys_games")
+    .select("id,start_time_aet,winner_team_id,loser_team_id,is_draw,status,home_team_id,away_team_id")
+    .eq("season", season)
+    .eq("status", "FT")
+    .lt("start_time_aet", gameStartIso)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order("start_time_aet", { ascending: false })
+    .limit(3);
+
+  if (error || !priorGames || priorGames.length === 0) return "UNKNOWN";
+
+  for (const pg of priorGames as any[]) {
+    if (pg.is_draw) return "DRAW";
+    if (pg.winner_team_id && pg.loser_team_id) {
+      if (pg.winner_team_id === teamId) return "WIN";
+      if (pg.loser_team_id === teamId) return "LOSS";
+    }
+  }
+  return "UNKNOWN";
+}
+
+// Compute current consecutive WIN streak before a given game (draw breaks streak)
+async function getWinStreakBeforeGame(args: {
+  supabase: any;
+  season: number;
+  teamId: string;
+  gameStartIso: string;
+  maxLookback?: number;
+}): Promise<number> {
+  const { supabase, season, teamId, gameStartIso, maxLookback = 10 } = args;
+
+  const { data: priorGames, error } = await supabase
+    .from("pers_sys_games")
+    .select("id,start_time_aet,winner_team_id,loser_team_id,is_draw,status,home_team_id,away_team_id")
+    .eq("season", season)
+    .eq("status", "FT")
+    .lt("start_time_aet", gameStartIso)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order("start_time_aet", { ascending: false })
+    .limit(maxLookback);
+
+  if (error || !priorGames || priorGames.length === 0) return 0;
+
+  let streak = 0;
+  for (const pg of priorGames as any[]) {
+    if (pg.is_draw) break; // draw breaks win-streak
+    if (pg.winner_team_id === teamId) {
+      streak += 1;
+      continue;
+    }
+    // loss or unknown breaks
+    break;
+  }
+  return streak;
+}
+
+// For SYS_7 tiering with "draw counts as loss":
+// returns a "loss-like" streak length (LOSS or DRAW if drawCountsAsLoss), 0 if not currently loss-like.
+async function getLossLikeStreakBeforeGame(args: {
+  supabase: any;
+  season: number;
+  teamId: string;
+  gameStartIso: string;
+  drawCountsAsLoss: boolean;
+  maxLookback?: number;
+}): Promise<number> {
+  const { supabase, season, teamId, gameStartIso, drawCountsAsLoss, maxLookback = 10 } = args;
+
+  const { data: priorGames, error } = await supabase
+    .from("pers_sys_games")
+    .select("id,start_time_aet,winner_team_id,loser_team_id,is_draw,status,home_team_id,away_team_id")
+    .eq("season", season)
+    .eq("status", "FT")
+    .lt("start_time_aet", gameStartIso)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order("start_time_aet", { ascending: false })
+    .limit(maxLookback);
+
+  if (error || !priorGames || priorGames.length === 0) return 0;
+
+  let streak = 0;
+  for (const pg of priorGames as any[]) {
+    if (pg.is_draw) {
+      if (!drawCountsAsLoss) break;
+      streak += 1;
+      continue;
+    }
+    if (pg.loser_team_id === teamId) {
+      streak += 1;
+      continue;
+    }
+    // WIN or unknown breaks loss-like streak
+    break;
+  }
+  return streak;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
@@ -674,10 +783,17 @@ Deno.serve(async (req) => {
               reason.fail_pct_diff = true;
             }
 
-            // Fav streak
-            const favStreak = favState.streak;
-            reason.fav_streak = favStreak;
-            if (favStreak < Number(params.fav_streak_min ?? 2)) {
+            // Fav streak (WIN-streak computed from prior results; draw breaks streak)
+            const favTeamId = favSide === "HOME" ? g.home_team_id : g.away_team_id;
+            const favWinStreak = await getWinStreakBeforeGame({
+              supabase,
+              season,
+              teamId: favTeamId,
+              gameStartIso: g.start_time_aet,
+            });
+            reason.fav_win_streak = favWinStreak;
+
+            if (favWinStreak < Number(params.fav_streak_min ?? 2)) {
               pass = false;
               reason.fail_fav_streak = true;
             }
@@ -1066,40 +1182,45 @@ Deno.serve(async (req) => {
               reason.fail_home_odds_band = true;
             }
 
-            // Lost prior match required
+            // Lost prior match required (DRAW counts as LOSS when enabled)
             if (params.lost_prior_match_required) {
-              // Prefer explicit prior outcome (supports draw_counts_as_loss)
-              const prior = await getPriorOutcome(g.home_team_id, g.start_time_aet);
-              reason.home_prior_outcome = prior.outcome;
-
               const drawCountsAsLoss = !!params.draw_counts_as_loss;
+
+              const priorOutcome = await getPriorOutcomeForTeam({
+                supabase,
+                season,
+                teamId: g.home_team_id,
+                gameStartIso: g.start_time_aet,
+              });
+
+              reason.home_prior_outcome = priorOutcome;
+              reason.draw_counts_as_loss = drawCountsAsLoss;
+
               const lostPrior =
-                prior.outcome === "LOSS" || (drawCountsAsLoss && prior.outcome === "DRAW");
+                priorOutcome === "LOSS" || (drawCountsAsLoss && priorOutcome === "DRAW");
 
               if (!lostPrior) {
-                // Fallback: if UNKNOWN, use streak heuristic
-                if (prior.outcome === "UNKNOWN") {
-                  reason.home_streak = homeState.streak;
-                  if (!(homeState.streak <= -1)) {
-                    pass = false;
-                    reason.fail_lost_prior = true;
-                  } else {
-                    reason.lost_prior_via_streak = true;
-                  }
-                } else {
-                  pass = false;
-                  reason.fail_lost_prior = true;
-                }
+                pass = false;
+                reason.fail_lost_prior = true;
               }
             }
 
-            // Tier assignment via streak (deterministic)
-            const st = homeState.streak;
-            reason.home_streak = st;
+            // Tier assignment via loss-like streak (LOSS, and DRAW if draw_counts_as_loss)
+            const drawCountsAsLoss = !!params.draw_counts_as_loss;
+
+            const lossLike = await getLossLikeStreakBeforeGame({
+              supabase,
+              season,
+              teamId: g.home_team_id,
+              gameStartIso: g.start_time_aet,
+              drawCountsAsLoss,
+            });
+
+            reason.home_loss_like_streak = lossLike;
 
             let tier: "tier1" | "tier2" | "tier3" = "tier1";
-            if (st <= -3) tier = "tier3";
-            else if (st === -2) tier = "tier2";
+            if (lossLike >= 3) tier = "tier3";
+            else if (lossLike === 2) tier = "tier2";
             else tier = "tier1";
             reason.tier = tier;
 

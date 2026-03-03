@@ -145,6 +145,18 @@ export default function WeekView() {
   );
 }
 
+function formatLeg(leg: any) {
+  const market = leg.leg_type || "?";
+  const side = leg.side || "?";
+  const line =
+    market === "LINE" && leg.line_at_bet !== null && leg.line_at_bet !== undefined
+      ? `${Number(leg.line_at_bet) > 0 ? "+" : ""}${leg.line_at_bet}`
+      : "";
+  const book = leg.exec_best_book || "—";
+  const price = leg.exec_best_price || "—";
+  return { market, side, line, book, price };
+}
+
 function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betPlaced: boolean }) {
   const date = new Date(game.start_time_aet);
   const homeTeam = (game.home_team as any)?.canonical_name || "?";
@@ -152,32 +164,75 @@ function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betP
 
   return (
     <Link to={`/runner/game/${game.id}`} className="block">
-      <div className={`runner-card flex items-center justify-between ${signals.length > 0 ? "border-primary/30" : ""}`}>
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-muted-foreground font-mono w-16">
-            R{game.round}
+      <div className={`runner-card ${signals.length > 0 ? "border-primary/30" : ""}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="text-xs text-muted-foreground font-mono w-16">
+              R{game.round}
+            </div>
+            <div className="font-medium text-sm">
+              {homeTeam} <span className="text-muted-foreground mx-1">v</span> {awayTeam}
+            </div>
           </div>
-          <div className="font-medium text-sm">
-            {homeTeam} <span className="text-muted-foreground mx-1">v</span> {awayTeam}
+          <div className="flex items-center gap-3">
+            {betPlaced && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
+                BET PLACED
+              </span>
+            )}
+            {!betPlaced && signals.map((s) => (
+              <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                {s.system_code}
+              </span>
+            ))}
+            <span className="text-xs text-muted-foreground font-mono">
+              {date.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
+              {" "}
+              {date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {betPlaced && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
-              BET PLACED
-            </span>
-          )}
-          {!betPlaced && signals.map((s) => (
-            <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-              {s.system_code}
-            </span>
-          ))}
-          <span className="text-xs text-muted-foreground font-mono">
-            {date.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
-            {" "}
-            {date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
+
+        {!betPlaced && signals.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {signals.flatMap((s) => {
+              const legs = (s?.reason && (s.reason as any).legs) ? (s.reason as any).legs : [];
+              if (!Array.isArray(legs) || legs.length === 0) return [];
+              return legs.map((leg: any, idx: number) => {
+                const key = `${s.id || s.system_code || "sig"}_${idx}`;
+                const f = formatLeg(leg);
+                return (
+                  <div key={key} className="flex items-center justify-between gap-3 text-[11px] font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-muted text-foreground">
+                        {s.system_code}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {f.market} {f.side}{f.line}
+                      </span>
+                      <span className="text-muted-foreground">
+                        exec: {f.book} @ {f.price}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert(
+                          `ACCEPT (placeholder)\n${s.system_code} ${f.market} ${f.side}${f.line}\nexec: ${f.book} @ ${f.price}`
+                        );
+                      }}
+                    >
+                      Accept
+                    </button>
+                  </div>
+                );
+              });
+            })}
+          </div>
+        )}
       </div>
     </Link>
   );

@@ -23,10 +23,13 @@ Deno.serve(async (req) => {
     // Fetch teams for mapping
     const { data: teams } = await supabase
       .from("pers_sys_teams")
-      .select("id, canonical_name, squiggle_name");
-    const teamBySquiggle: Record<string, string> = {};
+      .select("id, squiggle_team_id");
+
+    const teamBySquiggleId: Record<number, string> = {};
     for (const t of teams || []) {
-      if (t.squiggle_name) teamBySquiggle[t.squiggle_name] = t.id;
+      if (t.squiggle_team_id != null) {
+        teamBySquiggleId[Number(t.squiggle_team_id)] = t.id;
+      }
     }
 
     // Pull from Squiggle
@@ -44,8 +47,8 @@ Deno.serve(async (req) => {
     for (const g of games) {
       const hteam = g.hteam;
       const ateam = g.ateam;
-      const homeTeamId = teamBySquiggle[hteam];
-      const awayTeamId = teamBySquiggle[ateam];
+      const homeTeamId = teamBySquiggleId[Number(hteam)];
+      const awayTeamId = teamBySquiggleId[Number(ateam)];
 
       if (!homeTeamId || !awayTeamId) {
         skipped++;

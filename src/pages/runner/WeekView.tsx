@@ -9,6 +9,7 @@ export default function WeekView() {
   const [loading, setLoading] = useState(true);
   const [sigError, setSigError] = useState<any>(null);
   const [debug, setDebug] = useState<{ passTrue: number; passAll: number }>({ passTrue: 0, passAll: 0 });
+  const [unsettledByGame, setUnsettledByGame] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadData();
@@ -51,9 +52,20 @@ export default function WeekView() {
         .select("id,game_id,pass,system_code")
         .in("game_id", gameIds);
 
-      setSigError(sigPassErr || sigAllErr || null);
       setSignals(sigPass || []);
       setDebug({ passTrue: (sigPass || []).length, passAll: (sigAll || []).length });
+
+      const { data: openBets, error: openBetsErr } = await supabase
+        .from("pers_sys_bets")
+        .select("game_id,status")
+        .in("game_id", gameIds)
+        .eq("status", "UNSETTLED");
+
+      const ubg: Record<string, boolean> = {};
+      for (const b of openBets || []) ubg[b.game_id] = true;
+      setUnsettledByGame(ubg);
+
+      setSigError(sigPassErr || sigAllErr || openBetsErr || null);
     }
     setLoading(false);
   }
@@ -64,8 +76,21 @@ export default function WeekView() {
     signalsByGame[s.game_id].push(s);
   }
 
-  const qualifiedGames = games.filter((g) => signalsByGame[g.id]?.length > 0);
-  const otherGames = games.filter((g) => !signalsByGame[g.id]?.length);
+  // Primary rule: SYS_7 dominance per game
+  for (const gameId of Object.keys(signalsByGame)) {
+    const arr = signalsByGame[gameId] || [];
+    if (arr.some((x) => x.system_code === "SYS_7")) {
+      signalsByGame[gameId] = arr.filter((x) => x.system_code === "SYS_7");
+    }
+  }
+
+  // Secondary rule: existing real bet suppresses candidates
+  const qualifiedGames = games.filter((g) => {
+    if (unsettledByGame[g.id]) return false;
+    return (signalsByGame[g.id]?.length || 0) > 0;
+  });
+
+  const otherGames = games.filter((g) => !qualifiedGames.some((q) => q.id === g.id));
 
   return (
     <RunnerLayout>
@@ -91,7 +116,7 @@ export default function WeekView() {
                 </h2>
                 <div className="space-y-2">
                   {qualifiedGames.map((g) => (
-                    <GameRow key={g.id} game={g} signals={signalsByGame[g.id]} />
+                    <GameRow key={g.id} game={g} signals={signalsByGame[g.id]} betPlaced={!!unsettledByGame[g.id]} />
                   ))}
                 </div>
               </div>
@@ -103,7 +128,7 @@ export default function WeekView() {
               </h2>
               <div className="space-y-2">
                 {otherGames.map((g) => (
-                  <GameRow key={g.id} game={g} signals={[]} />
+                  <GameRow key={g.id} game={g} signals={[]} betPlaced={!!unsettledByGame[g.id]} />
                 ))}
               </div>
             </div>
@@ -120,7 +145,7 @@ export default function WeekView() {
   );
 }
 
-function GameRow({ game, signals }: { game: any; signals: any[] }) {
+function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betPlaced: boolean }) {
   const date = new Date(game.start_time_aet);
   const homeTeam = (game.home_team as any)?.canonical_name || "?";
   const awayTeam = (game.away_team as any)?.canonical_name || "?";
@@ -137,7 +162,12 @@ function GameRow({ game, signals }: { game: any; signals: any[] }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {signals.map((s) => (
+          {betPlaced && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
+              BET PLACED
+            </span>
+          )}
+          {!betPlaced && signals.map((s) => (
             <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">
               {s.system_code}
             </span>

@@ -721,6 +721,7 @@ export type Database = {
           active: boolean
           canonical_name: string
           created_at: string
+          home_state: string | null
           id: string
           oddsapi_name: string | null
           squiggle_name: string | null
@@ -731,6 +732,7 @@ export type Database = {
           active?: boolean
           canonical_name: string
           created_at?: string
+          home_state?: string | null
           id?: string
           oddsapi_name?: string | null
           squiggle_name?: string | null
@@ -741,11 +743,30 @@ export type Database = {
           active?: boolean
           canonical_name?: string
           created_at?: string
+          home_state?: string | null
           id?: string
           oddsapi_name?: string | null
           squiggle_name?: string | null
           squiggle_team_id?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      pers_sys_venue_state: {
+        Row: {
+          state: string
+          venue_key: string
+          venue_name: string
+        }
+        Insert: {
+          state: string
+          venue_key: string
+          venue_name: string
+        }
+        Update: {
+          state?: string
+          venue_key?: string
+          venue_name?: string
         }
         Relationships: []
       }
@@ -1494,6 +1515,7 @@ export type Database = {
         Args: { p_doc_type: string; p_year: number }
         Returns: string
       }
+      pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

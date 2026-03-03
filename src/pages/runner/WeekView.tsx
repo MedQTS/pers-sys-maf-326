@@ -217,12 +217,36 @@ function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betP
                     <button
                       type="button"
                       className="px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        alert(
-                          `ACCEPT (placeholder)\n${s.system_code} ${f.market} ${f.side}${f.line}\nexec: ${f.book} @ ${f.price}`
-                        );
+                        try {
+                          const unitsOverride =
+                            s.system_code === "SYS_7"
+                              ? (s?.reason as any)?.recommended_units ?? null
+                              : null;
+                          const payload = {
+                            p_game_id: game.id,
+                            p_system_code: s.system_code,
+                            p_leg_type: leg.leg_type,
+                            p_side: leg.side,
+                            p_line_at_bet: leg.line_at_bet ?? null,
+                            p_exec_best_price: leg.exec_best_price ?? null,
+                            p_exec_best_book: leg.exec_best_book ?? null,
+                            p_ref_price: leg.ref_price ?? null,
+                            p_units: unitsOverride,
+                            p_snapshot_type: leg.snapshot_type ?? null,
+                          };
+                          const { data, error } = await supabase.rpc("accept_leg_create_bet", payload);
+                          if (error) {
+                            alert(`ACCEPT failed: ${error.message}`);
+                            return;
+                          }
+                          alert(`ACCEPT result:\n${JSON.stringify(data, null, 2)}`);
+                          window.location.reload();
+                        } catch (err: any) {
+                          alert(`ACCEPT failed: ${String(err)}`);
+                        }
                       }}
                     >
                       Accept

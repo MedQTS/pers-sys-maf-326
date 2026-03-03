@@ -427,6 +427,36 @@ export type Database = {
           },
         ]
       }
+      pers_sys_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          event_type: string
+          id: string
+          note: string | null
+          ref_id: string | null
+          season_id: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          event_type: string
+          id?: string
+          note?: string | null
+          ref_id?: string | null
+          season_id: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          event_type?: string
+          id?: string
+          note?: string | null
+          ref_id?: string | null
+          season_id?: number
+        }
+        Relationships: []
+      }
       pers_sys_market_snapshots: {
         Row: {
           agg_method: string
@@ -1520,7 +1550,15 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      pers_sys_bankroll_summary: {
+        Row: {
+          available_balance: number | null
+          open_exposure: number | null
+          season_id: number | null
+          total_equity: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       next_sidehustler_doc_number: {

@@ -6,6 +6,51 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+type LegSide = "HOME" | "AWAY";
+
+function buildLegH2H(args: {
+  system_code: string;
+  snapshot_type: string;
+  side: LegSide;
+  ref_price: number | null;
+  exec_best_price?: number | null;
+  exec_best_book?: string | null;
+}) {
+  return {
+    system_code: args.system_code,
+    snapshot_type: args.snapshot_type,
+    leg_type: "H2H" as const,
+    side: args.side,
+    line_at_bet: null,
+    ref_price: args.ref_price,
+    exec_best_price: args.exec_best_price ?? null,
+    exec_best_book: args.exec_best_book ?? null,
+  };
+}
+
+function buildLegLine(args: {
+  system_code: string;
+  snapshot_type: string;
+  side: LegSide;
+  line_at_bet: number | null;
+  ref_price: number | null;
+  exec_best_line?: number | null;
+  exec_best_price?: number | null;
+  exec_best_book?: string | null;
+}) {
+  return {
+    system_code: args.system_code,
+    snapshot_type: args.snapshot_type,
+    leg_type: "LINE" as const,
+    side: args.side,
+    line_at_bet: args.line_at_bet,
+    ref_price: args.ref_price,
+    exec_best_line: args.exec_best_line ?? null,
+    exec_best_price: args.exec_best_price ?? null,
+    exec_best_book: args.exec_best_book ?? null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
@@ -15,7 +60,6 @@ Deno.serve(async (req) => {
     const season = body.season || new Date().getFullYear();
 
     // Stage 2: Lock close definition. "Close" is always T10.
-    // No system code is allowed to choose another anchor.
     const CLOSE_SNAPSHOT_TYPE = "T10" as const;
 
     const supabase = createClient(
@@ -169,9 +213,6 @@ Deno.serve(async (req) => {
             const favClosePrice = homeFav ? closeH2H.home_price : closeH2H.away_price;
             reason.fav_odds = favClosePrice;
             if (favClosePrice < (params.fav_close_odds_min || 1.55)) {
-              // Fav odds too short - this is checking fav odds >= 1.55
-              // Actually the spec says "Favourite close odds ≥ 1.55"
-              // meaning the favourite can't be too short
               pass = false;
               reason.fail_fav_odds_too_short = true;
             }
@@ -184,22 +225,26 @@ Deno.serve(async (req) => {
               reason.fail_not_home_dog = true;
             }
 
-            reason.bet_side = "HOME";
-            reason.bet_market = "H2H";
-            reason.bet_price = openH2H.home_price;
-
-            // Stage 4: attach execution best (H2H)
-            reason.exec_best_home_price = openH2H.exec_best_home_price ?? null;
-            reason.exec_best_home_book = openH2H.exec_best_home_book ?? null;
-            reason.exec_best_away_price = openH2H.exec_best_away_price ?? null;
-            reason.exec_best_away_book = openH2H.exec_best_away_book ?? null;
-
-            reason.ref_books_observed = openH2H.ref_books_observed ?? [];
-            reason.exec_books_observed = openH2H.exec_books_observed ?? [];
+            // Build legs array — SYS_3 bets HOME H2H at OPEN
+            reason.legs = [
+              buildLegH2H({
+                system_code: "SYS_3",
+                snapshot_type: "OPEN",
+                side: "HOME",
+                ref_price: openH2H.home_price,
+                exec_best_price: openH2H.exec_best_home_price,
+                exec_best_book: openH2H.exec_best_home_book,
+              }),
+            ];
 
             reason.exec_available =
               !!openH2H.exec_best_home_price && !!openH2H.exec_best_home_book;
           }
+
+          // Always set observed arrays (even on missing data)
+          reason.ref_books_observed = openH2H?.ref_books_observed ?? [];
+          reason.exec_books_observed = openH2H?.exec_books_observed ?? [];
+          if (!reason.legs) reason.legs = [];
 
           const { error } = await supabase.from("pers_sys_signals").upsert(
             {
@@ -248,28 +293,31 @@ Deno.serve(async (req) => {
                 reason.fail_gf_odds_too_short = true;
               }
 
-              // Bet opponent LINE at OPEN
-              reason.bet_side = gfIsHome ? "AWAY_LINE" : "HOME_LINE";
-              reason.bet_line = gfIsHome ? openLine.away_line : openLine.home_line;
-              reason.bet_price = gfIsHome ? openLine.away_line_price : openLine.home_line_price;
+              // Build legs array — SYS_2 bets opponent LINE at OPEN
+              const betSide: LegSide = gfIsHome ? "AWAY" : "HOME";
+              reason.legs = [
+                buildLegLine({
+                  system_code: "SYS_2",
+                  snapshot_type: "OPEN",
+                  side: betSide,
+                  line_at_bet: gfIsHome ? openLine.away_line : openLine.home_line,
+                  ref_price: gfIsHome ? openLine.away_line_price : openLine.home_line_price,
+                  exec_best_line: gfIsHome ? openLine.exec_best_away_line : openLine.exec_best_home_line,
+                  exec_best_price: gfIsHome ? openLine.exec_best_away_line_price : openLine.exec_best_home_line_price,
+                  exec_best_book: gfIsHome ? openLine.exec_best_away_line_book : openLine.exec_best_home_line_book,
+                }),
+              ];
 
-              // Stage 4: attach execution best (LINE)
-              reason.exec_best_home_line = openLine.exec_best_home_line ?? null;
-              reason.exec_best_home_line_price = openLine.exec_best_home_line_price ?? null;
-              reason.exec_best_home_line_book = openLine.exec_best_home_line_book ?? null;
-
-              reason.exec_best_away_line = openLine.exec_best_away_line ?? null;
-              reason.exec_best_away_line_price = openLine.exec_best_away_line_price ?? null;
-              reason.exec_best_away_line_book = openLine.exec_best_away_line_book ?? null;
-
-              reason.ref_books_observed = openLine.ref_books_observed ?? [];
-              reason.exec_books_observed = openLine.exec_books_observed ?? [];
-
-              reason.exec_available =
-                !!openLine.exec_best_away_line_price &&
-                !!openLine.exec_best_away_line_book;
+              reason.exec_available = gfIsHome
+                ? !!openLine.exec_best_away_line_price && !!openLine.exec_best_away_line_book
+                : !!openLine.exec_best_home_line_price && !!openLine.exec_best_home_line_book;
             }
           }
+
+          // Always set observed arrays
+          reason.ref_books_observed = openLine?.ref_books_observed ?? [];
+          reason.exec_books_observed = openLine?.exec_books_observed ?? [];
+          if (!reason.legs) reason.legs = [];
 
           const { error } = await supabase.from("pers_sys_signals").upsert(
             {
@@ -300,23 +348,10 @@ Deno.serve(async (req) => {
             reason.away_streak = awayState.streak;
           }
 
-          if (openLine) {
-            // Stage 4: attach execution best (LINE)
-            reason.exec_best_home_line = openLine.exec_best_home_line ?? null;
-            reason.exec_best_home_line_price = openLine.exec_best_home_line_price ?? null;
-            reason.exec_best_home_line_book = openLine.exec_best_home_line_book ?? null;
-
-            reason.exec_best_away_line = openLine.exec_best_away_line ?? null;
-            reason.exec_best_away_line_price = openLine.exec_best_away_line_price ?? null;
-            reason.exec_best_away_line_book = openLine.exec_best_away_line_book ?? null;
-
-            reason.ref_books_observed = openLine.ref_books_observed ?? [];
-            reason.exec_books_observed = openLine.exec_books_observed ?? [];
-
-            reason.exec_available =
-              !!openLine.exec_best_away_line_price &&
-              !!openLine.exec_best_away_line_book;
-          }
+          // Empty legs — no qualification logic yet
+          reason.legs = [];
+          reason.ref_books_observed = openLine?.ref_books_observed ?? [];
+          reason.exec_books_observed = openLine?.exec_books_observed ?? [];
 
           const { error } = await supabase.from("pers_sys_signals").upsert(
             {

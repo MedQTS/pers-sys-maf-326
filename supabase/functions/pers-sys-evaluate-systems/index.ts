@@ -14,6 +14,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const season = body.season || new Date().getFullYear();
 
+    // Stage 2: Lock close definition. "Close" is always T10.
+    // No system code is allowed to choose another anchor.
+    const CLOSE_SNAPSHOT_TYPE = "T10" as const;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -102,6 +106,13 @@ Deno.serve(async (req) => {
           (s) => s.snapshot_type === "OPEN" && s.market_type === "LINE"
         );
 
+        const closeH2H = gameSnaps.find(
+          (s) => s.snapshot_type === CLOSE_SNAPSHOT_TYPE && s.market_type === "H2H"
+        );
+        const closeLine = gameSnaps.find(
+          (s) => s.snapshot_type === CLOSE_SNAPSHOT_TYPE && s.market_type === "LINE"
+        );
+
         if (sys.system_code === "SYS_3") {
           // Form Dog system
           const reason: Record<string, any> = {
@@ -112,8 +123,8 @@ Deno.serve(async (req) => {
 
           let pass = true;
 
-          // Need OPEN H2H and team states
-          if (!openH2H || !homeState || !awayState) {
+          // Need OPEN H2H, CLOSE (T10) H2H, and team states
+          if (!openH2H || !closeH2H || !homeState || !awayState) {
             pass = false;
             reason.fail = "missing_data";
           } else {
@@ -154,9 +165,10 @@ Deno.serve(async (req) => {
               reason.fail_fav_streak = true;
             }
 
-            // Fav close odds check - use OPEN for now
-            reason.fav_odds = favPrice;
-            if (favPrice < (params.fav_close_odds_min || 1.55)) {
+            // Fav close odds check - locked to CLOSE (T10)
+            const favClosePrice = homeFav ? closeH2H.home_price : closeH2H.away_price;
+            reason.fav_odds = favClosePrice;
+            if (favClosePrice < (params.fav_close_odds_min || 1.55)) {
               // Fav odds too short - this is checking fav odds >= 1.55
               // Actually the spec says "Favourite close odds ≥ 1.55"
               // meaning the favourite can't be too short

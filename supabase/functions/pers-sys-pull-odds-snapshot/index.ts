@@ -10,7 +10,9 @@ function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 Deno.serve(async (req) => {
@@ -19,7 +21,27 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const snapshotType: string = body.snapshot_type || "OPEN";
+    const rawSnapshotType = String(body.snapshot_type || "OPEN").toUpperCase();
+    const allowedSnapshotTypes = new Set(["OPEN", "T60", "T30", "T10"]);
+    if (!allowedSnapshotTypes.has(rawSnapshotType)) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Invalid snapshot_type",
+          received: rawSnapshotType,
+          allowed: Array.from(allowedSnapshotTypes),
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const snapshotType: "OPEN" | "T60" | "T30" | "T10" = rawSnapshotType as
+      | "OPEN"
+      | "T60"
+      | "T30"
+      | "T10";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -35,7 +57,9 @@ Deno.serve(async (req) => {
 
     // Get eligible scheduled games
     const cutoffStart = new Date(now.getTime() + bufferMinutes * 60 * 1000);
-    const cutoffEnd = new Date(now.getTime() + lookaheadDays * 24 * 60 * 60 * 1000);
+    const cutoffEnd = new Date(
+      now.getTime() + lookaheadDays * 24 * 60 * 60 * 1000
+    );
 
     const { data: eligibleGames } = await supabase
       .from("pers_sys_games")
@@ -46,7 +70,12 @@ Deno.serve(async (req) => {
 
     if (!eligibleGames || eligibleGames.length === 0) {
       return new Response(
-        JSON.stringify({ ok: true, snapshot_type: snapshotType, eligible: 0, snapshots_stored: 0 }),
+        JSON.stringify({
+          ok: true,
+          snapshot_type: snapshotType,
+          eligible: 0,
+          snapshots_stored: 0,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -56,7 +85,10 @@ Deno.serve(async (req) => {
       .from("pers_sys_teams")
       .select("id, canonical_name, oddsapi_name");
 
-    const teamById: Record<string, { canonical_name: string; oddsapi_name: string | null }> = {};
+    const teamById: Record<
+      string,
+      { canonical_name: string; oddsapi_name: string | null }
+    > = {};
     for (const t of teams || []) {
       teamById[t.id] = { canonical_name: t.canonical_name, oddsapi_name: t.oddsapi_name };
     }
@@ -79,107 +111,104 @@ Deno.serve(async (req) => {
       const awayInfo = teamById[game.away_team_id];
       if (!homeInfo || !awayInfo) continue;
 
-      // Find matching event
-      const matchEvent = oddsEvents.find((ev: any) => {
-        if (game.oddsapi_event_id && ev.id === game.oddsapi_event_id) return true;
-        const htName = (homeInfo.oddsapi_name || homeInfo.canonical_name).toLowerCase();
-        const atName = (awayInfo.oddsapi_name || awayInfo.canonical_name).toLowerCase();
-        const evHome = ev.home_team?.toLowerCase() || "";
-        const evAway = ev.away_team?.toLowerCase() || "";
-        return (evHome.includes(htName) || htName.includes(evHome)) &&
-               (evAway.includes(atName) || atName.includes(evAway));
+      const homeNames = new Set<string>(
+        [homeInfo.canonical_name, homeInfo.oddsapi_name].filter(Boolean) as string[]
+      );
+      const awayNames = new Set<string>(
+        [awayInfo.canonical_name, awayInfo.oddsapi_name].filter(Boolean) as string[]
+      );
+
+      const matchedEvent = oddsEvents.find((ev: any) => {
+        const home = String(ev.home_team || "");
+        const away = String(ev.away_team || "");
+        const homeOk = [...homeNames].some((n) => n.toLowerCase() === home.toLowerCase());
+        const awayOk = [...awayNames].some((n) => n.toLowerCase() === away.toLowerCase());
+        return homeOk && awayOk;
       });
 
-      if (!matchEvent) continue;
+      if (!matchedEvent) continue;
 
-      // Update oddsapi_event_id if not set
-      if (!game.oddsapi_event_id) {
+      // If oddsapi_event_id not set, store it for future matching
+      if (!game.oddsapi_event_id && matchedEvent.id) {
         await supabase
           .from("pers_sys_games")
-          .update({ oddsapi_event_id: matchEvent.id })
+          .update({ oddsapi_event_id: matchedEvent.id })
           .eq("id", game.id);
       }
 
-      // Extract H2H odds
-      const h2hBooks: string[] = [];
-      const homePrices: number[] = [];
-      const awayPrices: number[] = [];
+      // Extract markets
+      const bookmakers = matchedEvent.bookmakers || [];
 
-      // Extract LINE odds
-      const lineBooks: string[] = [];
-      const homeLines: number[] = [];
-      const awayLines: number[] = [];
-      const homeLinePrices: number[] = [];
-      const awayLinePrices: number[] = [];
+      // H2H odds aggregation
+      const h2hValues: number[] = [];
+      const spreadPoints: number[] = [];
+      const spreadPrices: number[] = [];
 
-      for (const bm of matchEvent.bookmakers || []) {
-        for (const mkt of bm.markets || []) {
-          if (mkt.key === "h2h") {
-            const homeOutcome = mkt.outcomes?.find((o: any) =>
-              o.name?.toLowerCase() === matchEvent.home_team?.toLowerCase()
-            );
-            const awayOutcome = mkt.outcomes?.find((o: any) =>
-              o.name?.toLowerCase() === matchEvent.away_team?.toLowerCase()
-            );
-            if (homeOutcome && awayOutcome) {
-              h2hBooks.push(bm.key);
-              homePrices.push(homeOutcome.price);
-              awayPrices.push(awayOutcome.price);
+      for (const bk of bookmakers) {
+        for (const m of bk.markets || []) {
+          if (m.key === "h2h") {
+            for (const o of m.outcomes || []) {
+              if (String(o.name).toLowerCase() === homeInfo.canonical_name.toLowerCase()) {
+                const price = Number(o.price);
+                if (Number.isFinite(price)) h2hValues.push(price);
+              }
             }
-          } else if (mkt.key === "spreads") {
-            const homeOutcome = mkt.outcomes?.find((o: any) =>
-              o.name?.toLowerCase() === matchEvent.home_team?.toLowerCase()
-            );
-            const awayOutcome = mkt.outcomes?.find((o: any) =>
-              o.name?.toLowerCase() === matchEvent.away_team?.toLowerCase()
-            );
-            if (homeOutcome && awayOutcome) {
-              lineBooks.push(bm.key);
-              homeLines.push(homeOutcome.point ?? 0);
-              awayLines.push(awayOutcome.point ?? 0);
-              homeLinePrices.push(homeOutcome.price);
-              awayLinePrices.push(awayOutcome.price);
+          }
+          if (m.key === "spreads") {
+            for (const o of m.outcomes || []) {
+              if (String(o.name).toLowerCase() === homeInfo.canonical_name.toLowerCase()) {
+                const point = Number(o.point);
+                const price = Number(o.price);
+                if (Number.isFinite(point) && Number.isFinite(price)) {
+                  spreadPoints.push(point);
+                  spreadPrices.push(price);
+                }
+              }
             }
           }
         }
       }
 
-      // Store H2H snapshot
-      if (homePrices.length > 0) {
+      const h2hMedian = median(h2hValues);
+
+      // For spreads, take median of points and median of prices separately
+      const spreadPointMedian = median(spreadPoints);
+      const spreadPriceMedian = median(spreadPrices);
+
+      // Store snapshots
+      if (Number.isFinite(h2hMedian) && h2hMedian > 0) {
         const { error } = await supabase.from("pers_sys_market_snapshots").upsert(
           {
             game_id: game.id,
             snapshot_type: snapshotType,
-            snapshot_ts: snapshotTs,
             market_type: "H2H",
-            agg_method: "MEDIAN",
-            books_used: h2hBooks,
-            home_price: Number(median(homePrices).toFixed(3)),
-            away_price: Number(median(awayPrices).toFixed(3)),
+            agg_method: "median",
+            value1: h2hMedian,
+            snapshot_ts: snapshotTs,
           },
           { onConflict: "game_id,snapshot_type,market_type,agg_method" }
         );
-        if (!error) snapshotsStored++;
+        if (!error) snapshotsStored += 1;
       }
 
-      // Store LINE snapshot
-      if (homeLines.length > 0) {
+      if (
+        Number.isFinite(spreadPointMedian) &&
+        Number.isFinite(spreadPriceMedian) &&
+        spreadPriceMedian > 0
+      ) {
         const { error } = await supabase.from("pers_sys_market_snapshots").upsert(
           {
             game_id: game.id,
             snapshot_type: snapshotType,
-            snapshot_ts: snapshotTs,
             market_type: "LINE",
-            agg_method: "MEDIAN",
-            books_used: lineBooks,
-            home_line: Number(median(homeLines).toFixed(1)),
-            away_line: Number(median(awayLines).toFixed(1)),
-            home_line_price: Number(median(homeLinePrices).toFixed(3)),
-            away_line_price: Number(median(awayLinePrices).toFixed(3)),
+            agg_method: "median",
+            value1: spreadPointMedian,
+            value2: spreadPriceMedian,
+            snapshot_ts: snapshotTs,
           },
           { onConflict: "game_id,snapshot_type,market_type,agg_method" }
         );
-        if (!error) snapshotsStored++;
+        if (!error) snapshotsStored += 1;
       }
     }
 
@@ -188,16 +217,17 @@ Deno.serve(async (req) => {
         ok: true,
         snapshot_type: snapshotType,
         eligible: eligibleGames.length,
-        odds_events: oddsEvents.length,
         snapshots_stored: snapshotsStored,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
     return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ ok: false, error: String(e?.message || e) }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
     );
   }
 });

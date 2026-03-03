@@ -49,9 +49,21 @@ export default function Dashboard() {
               variant="secondary"
             />
             <RunButton
-              label="Pull CLOSE Snapshot"
+              label="Pull T60 Snapshot"
               functionName="pers-sys-pull-odds-snapshot"
-              body={{ snapshot_type: "CLOSE" }}
+              body={{ snapshot_type: "T60" }}
+              variant="outline"
+            />
+            <RunButton
+              label="Pull T30 Snapshot"
+              functionName="pers-sys-pull-odds-snapshot"
+              body={{ snapshot_type: "T30" }}
+              variant="outline"
+            />
+            <RunButton
+              label="Pull T10 Snapshot"
+              functionName="pers-sys-pull-odds-snapshot"
+              body={{ snapshot_type: "T10" }}
               variant="outline"
             />
           </div>

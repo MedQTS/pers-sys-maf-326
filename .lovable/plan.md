@@ -2,11 +2,11 @@
 
 ## Plan
 
-Two surgical edits to `supabase/functions/pers-sys-pull-squiggle/index.ts`:
+Add 12 new columns to `pers_sys_market_snapshots` via a single migration:
 
-1. **Lines 25-30**: Replace the team select/mapping to use `squiggle_team_id` (integer) instead of `squiggle_name` (string).
+- 4 exec-best H2H columns: `exec_best_home_price`, `exec_best_home_book`, `exec_best_away_price`, `exec_best_away_book`
+- 6 exec-best LINE columns: `exec_best_home_line`, `exec_best_home_line_price`, `exec_best_home_line_book`, `exec_best_away_line`, `exec_best_away_line_price`, `exec_best_away_line_book`
+- 2 observability columns: `ref_books_observed` (jsonb), `exec_books_observed` (jsonb)
 
-2. **Lines 45-48**: Replace the lookup to use `teamBySquiggleId[Number(...)]` instead of `teamBySquiggle[hteam]`.
-
-No other files affected. Deploy the function after editing.
+Single SQL migration using `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. No code changes needed -- just the schema change.
 

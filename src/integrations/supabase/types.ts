@@ -585,18 +585,21 @@ export type Database = {
       pers_sys_season_meta: {
         Row: {
           created_at: string
+          gf_runner_up_team_id: string | null
           gf_winner_team_id: string
           season: number
           updated_at: string
         }
         Insert: {
           created_at?: string
+          gf_runner_up_team_id?: string | null
           gf_winner_team_id: string
           season: number
           updated_at?: string
         }
         Update: {
           created_at?: string
+          gf_runner_up_team_id?: string | null
           gf_winner_team_id?: string
           season?: number
           updated_at?: string

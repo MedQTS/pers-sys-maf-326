@@ -423,12 +423,24 @@ export type Database = {
           away_price: number | null
           books_used: Json
           created_at: string
+          exec_best_away_book: string | null
+          exec_best_away_line: number | null
+          exec_best_away_line_book: string | null
+          exec_best_away_line_price: number | null
+          exec_best_away_price: number | null
+          exec_best_home_book: string | null
+          exec_best_home_line: number | null
+          exec_best_home_line_book: string | null
+          exec_best_home_line_price: number | null
+          exec_best_home_price: number | null
+          exec_books_observed: Json
           game_id: string
           home_line: number | null
           home_line_price: number | null
           home_price: number | null
           id: string
           market_type: string
+          ref_books_observed: Json
           snapshot_ts: string
           snapshot_type: string
         }
@@ -439,12 +451,24 @@ export type Database = {
           away_price?: number | null
           books_used?: Json
           created_at?: string
+          exec_best_away_book?: string | null
+          exec_best_away_line?: number | null
+          exec_best_away_line_book?: string | null
+          exec_best_away_line_price?: number | null
+          exec_best_away_price?: number | null
+          exec_best_home_book?: string | null
+          exec_best_home_line?: number | null
+          exec_best_home_line_book?: string | null
+          exec_best_home_line_price?: number | null
+          exec_best_home_price?: number | null
+          exec_books_observed?: Json
           game_id: string
           home_line?: number | null
           home_line_price?: number | null
           home_price?: number | null
           id?: string
           market_type: string
+          ref_books_observed?: Json
           snapshot_ts: string
           snapshot_type: string
         }
@@ -455,12 +479,24 @@ export type Database = {
           away_price?: number | null
           books_used?: Json
           created_at?: string
+          exec_best_away_book?: string | null
+          exec_best_away_line?: number | null
+          exec_best_away_line_book?: string | null
+          exec_best_away_line_price?: number | null
+          exec_best_away_price?: number | null
+          exec_best_home_book?: string | null
+          exec_best_home_line?: number | null
+          exec_best_home_line_book?: string | null
+          exec_best_home_line_price?: number | null
+          exec_best_home_price?: number | null
+          exec_books_observed?: Json
           game_id?: string
           home_line?: number | null
           home_line_price?: number | null
           home_price?: number | null
           id?: string
           market_type?: string
+          ref_books_observed?: Json
           snapshot_ts?: string
           snapshot_type?: string
         }

@@ -1,27 +1,31 @@
 
 
-## Plan: Surgical fixes to `pers-sys-pull-odds-snapshot/index.ts`
+## Block 1/2 — Harden normName matching in `pers-sys-pull-odds-snapshot/index.ts`
 
-Four targeted changes to a single file, no schema or other file modifications.
+Four changes within the existing file:
 
-### Changes
+**1a. Replace `normName` helper** (line 150-152) with the enhanced version that strips `&→and`, punctuation, hyphens, and fluff tokens (`fc`, `football`, `club`, `afl`, `the`). Add a `normSet` helper that builds a `Set<string>` from an array of nullable strings.
 
-**1. Fix LINE anchor bug when median is 0.0** (lines 350-351)
-Replace `refHomeLineMed || null` and `refAwayLineMed || null` with `Number.isFinite(refHomeLineMed) ? refHomeLineMed : null` (same for away). The `|| null` pattern treats `0` as falsy, breaking anchor selection for even-line games.
+**1b. Replace `teamById` construction** (lines 145-159) to use a `TeamInfo` type with a `norm_names: Set<string>` field built from both `canonical_name` and `oddsapi_name`. Remove the separate `teamIdByNorm` map — matching will use per-team norm sets instead.
 
-**2. Harden OddsAPI event matching with time tolerance** (lines 179-185)
-- Add `const TOL_MS = 6 * 60 * 60 * 1000;` before the game loop.
-- Inside `matchedEvent = oddsEvents.find(...)`, after the existing home/away name check, parse `ev.commence_time` and `game.start_time_aet` as timestamps and require `Math.abs(evTs - gameTs) <= TOL_MS`. If either timestamp is NaN, treat as no match.
+**1c. Replace `matchedEvent` selection** (lines 185-200) to use `expectedHome.norm_names.has(normName(ev.home_team))` instead of the `teamIdByNorm` lookup. Keep the 6-hour `TOL_MS` time tolerance. The `homeInfo`/`awayInfo` variables become `expectedHome`/`expectedAway` of type `TeamInfo`.
 
-**3. Make H2H best-exec deterministic on price ties** (lines 249-252, 259-262)
-When `price === execBestHomePrice`, compare `execPriority.get(bmKey)` vs `execPriority.get(execBestHomeBook)` and take the lower priority index. Same pattern for away side.
+**1d. Replace outcome name matching in H2H and spreads loops** (lines 252-256, 288-292) to use `expectedHome.norm_names.has(normName(o.name))` / `expectedAway.norm_names.has(...)` instead of the current case-insensitive string equality checks.
 
-**4. Add diagnostic counters to response JSON** (lines 162-165, 170, 187, plus response)
-- Initialize counters: `skipped_no_team_map`, `skipped_no_event_match`, `skipped_no_ref_h2h`, `skipped_no_ref_line`, `skipped_no_exec_books`.
-- Increment at each existing `continue` / skip point.
-- Include all five in the final response JSON object.
+No other logic changes — all reference/exec aggregation, median, upsert, and diagnostics remain identical.
 
-### Technical Detail
+---
 
-All changes are within the single file `supabase/functions/pers-sys-pull-odds-snapshot/index.ts`. The function will be redeployed after edits.
+## Block 2/2 — New `pers-sys-audit-oddsapi-names` edge function
+
+**New file**: `supabase/functions/pers-sys-audit-oddsapi-names/index.ts`
+
+Calls the OddsAPI `/participants` endpoint (cost: 1 API call), loads `pers_sys_teams`, and cross-references using the same `normName` logic. Returns:
+- `unmapped_participants` — API names that don't match any team (no_match or ambiguous)
+- `teams_needing_attention` — teams missing `oddsapi_name` or whose `oddsapi_name` doesn't match any participant
+- Optional `apply=true` mode: auto-fills `oddsapi_name` where a unique suggestion exists
+
+**Config**: Add `[functions.pers-sys-audit-oddsapi-names] verify_jwt = false` to `supabase/config.toml`.
+
+**Deploy** both functions after changes.
 

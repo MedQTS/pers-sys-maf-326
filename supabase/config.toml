@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.pers-sys-audit-oddsapi-names]
 verify_jwt = false
+
+[functions.pers-sys-evaluate-systems-v2]
+verify_jwt = false

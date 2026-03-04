@@ -142,20 +142,41 @@ Deno.serve(async (req) => {
       .from("pers_sys_teams")
       .select("id, canonical_name, oddsapi_name");
 
-    const teamById: Record<
-      string,
-      { canonical_name: string; oddsapi_name: string | null }
-    > = {};
-
     function normName(s: string): string {
-      return String(s || "").trim().toLowerCase().replace(/\s+/g, " ").replace(/[^a-z0-9 ]/g, "");
+      return String(s || "")
+        .toLowerCase()
+        .trim()
+        .replace(/&/g, "and")
+        .replace(/['".,()]/g, "")
+        .replace(/-/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/\b(fc|football|club|afl|the)\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
-    const teamIdByNorm = new Map<string, string>();
+    function normSet(names: Array<string | null | undefined>): Set<string> {
+      const out = new Set<string>();
+      for (const n of names) {
+        const nn = normName(String(n || ""));
+        if (nn) out.add(nn);
+      }
+      return out;
+    }
+
+    type TeamInfo = {
+      canonical_name: string;
+      oddsapi_name: string | null;
+      norm_names: Set<string>;
+    };
+
+    const teamById: Record<string, TeamInfo> = {};
     for (const t of teams || []) {
-      teamById[t.id] = { canonical_name: t.canonical_name, oddsapi_name: t.oddsapi_name };
-      if (t.canonical_name) teamIdByNorm.set(normName(t.canonical_name), t.id);
-      if (t.oddsapi_name) teamIdByNorm.set(normName(t.oddsapi_name), t.id);
+      teamById[t.id] = {
+        canonical_name: t.canonical_name,
+        oddsapi_name: t.oddsapi_name ?? null,
+        norm_names: normSet([t.canonical_name, t.oddsapi_name]),
+      };
     }
 
     const oddsUrl = `https://api.the-odds-api.com/v4/sports/aussierules_afl/odds/?apiKey=${apiKey}&regions=au&markets=h2h,spreads&oddsFormat=decimal`;
@@ -182,16 +203,19 @@ Deno.serve(async (req) => {
     const TOL_MS = 6 * 60 * 60 * 1000;
 
     for (const game of eligibleGames) {
-      const homeInfo = teamById[game.home_team_id];
-      const awayInfo = teamById[game.away_team_id];
-      if (!homeInfo || !awayInfo) { skipped_no_team_map++; continue; }
+      const expectedHome = teamById[game.home_team_id];
+      const expectedAway = teamById[game.away_team_id];
+      if (!expectedHome || !expectedAway) { skipped_no_team_map++; continue; }
 
       const gameTs = new Date(game.start_time_aet).getTime();
 
       const matchedEvent = oddsEvents.find((ev: any) => {
-        const homeId = teamIdByNorm.get(normName(ev.home_team || ""));
-        const awayId = teamIdByNorm.get(normName(ev.away_team || ""));
-        if (homeId !== game.home_team_id || awayId !== game.away_team_id) return false;
+        const home = normName(String(ev.home_team || ""));
+        const away = normName(String(ev.away_team || ""));
+        if (!home || !away) return false;
+        const homeOk = expectedHome.norm_names.has(home);
+        const awayOk = expectedAway.norm_names.has(away);
+        if (!homeOk || !awayOk) return false;
         const evTs = new Date(ev.commence_time).getTime();
         if (Number.isNaN(evTs) || Number.isNaN(gameTs)) return false;
         return Math.abs(evTs - gameTs) <= TOL_MS;
@@ -249,11 +273,9 @@ Deno.serve(async (req) => {
               const price = Number(o.price);
               if (!Number.isFinite(price)) continue;
 
-              const outcomeName = String(o.name || "");
-              const isHome = outcomeName.toLowerCase() === homeInfo.canonical_name.toLowerCase() ||
-                (homeInfo.oddsapi_name && outcomeName.toLowerCase() === homeInfo.oddsapi_name.toLowerCase());
-              const isAway = outcomeName.toLowerCase() === awayInfo.canonical_name.toLowerCase() ||
-                (awayInfo.oddsapi_name && outcomeName.toLowerCase() === awayInfo.oddsapi_name.toLowerCase());
+              const outcomeNorm = normName(String(o.name || ""));
+              const isHome = expectedHome.norm_names.has(outcomeNorm);
+              const isAway = expectedAway.norm_names.has(outcomeNorm);
 
               if (isHome && bmKey) {
                 if (isRef) { refH2hBooks.add(bmKey); refHomePrices.push(price); }
@@ -285,11 +307,9 @@ Deno.serve(async (req) => {
               const price = Number(o.price);
               if (!Number.isFinite(point) || !Number.isFinite(price)) continue;
 
-              const outcomeName = String(o.name || "");
-              const isHome = outcomeName.toLowerCase() === homeInfo.canonical_name.toLowerCase() ||
-                (homeInfo.oddsapi_name && outcomeName.toLowerCase() === homeInfo.oddsapi_name.toLowerCase());
-              const isAway = outcomeName.toLowerCase() === awayInfo.canonical_name.toLowerCase() ||
-                (awayInfo.oddsapi_name && outcomeName.toLowerCase() === awayInfo.oddsapi_name.toLowerCase());
+              const outcomeNorm = normName(String(o.name || ""));
+              const isHome = expectedHome.norm_names.has(outcomeNorm);
+              const isAway = expectedAway.norm_names.has(outcomeNorm);
 
               if (isHome && bmKey) {
                 if (isRef) {

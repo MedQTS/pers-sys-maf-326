@@ -16,7 +16,7 @@ export default function BetsPage() {
   // Form state
   const [formSystem, setFormSystem] = useState("");
   const [formGame, setFormGame] = useState("");
-  const [formLeg, setFormLeg] = useState("H2H");
+  const [formMarketType, setFormMarketType] = useState<"H2H" | "LINE">("H2H");
   const [formSide, setFormSide] = useState("HOME");
   const [formPrice, setFormPrice] = useState("");
   const [formUnits, setFormUnits] = useState("1");
@@ -56,7 +56,7 @@ export default function BetsPage() {
       return;
     }
 
-    if (formLeg === "LINE" && !formLine) {
+    if (formMarketType === "LINE" && !formLine) {
       toast.error("Line is required for LINE bets");
       return;
     }
@@ -64,12 +64,12 @@ export default function BetsPage() {
     const { error } = await supabase.from("pers_sys_bets").insert({
       system_code: formSystem,
       game_id: formGame,
-      leg_type: formLeg,
+      leg_type: formMarketType,
       placed_ts: new Date().toISOString(),
       side: formSide,
       price: parseFloat(formPrice),
       units: parseFloat(formUnits),
-      line_at_bet: formLeg === "LINE" ? parseFloat(formLine) : null,
+      line_at_bet: formMarketType === "LINE" ? parseFloat(formLine) : null,
       notes: formNotes || null,
     });
 
@@ -118,7 +118,7 @@ export default function BetsPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={formLeg} onValueChange={setFormLeg}>
+              <Select value={formMarketType} onValueChange={(v) => { setFormMarketType(v as "H2H" | "LINE"); if (v === "H2H") setFormLine(""); }}>
                 <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="H2H">H2H</SelectItem>
@@ -147,7 +147,7 @@ export default function BetsPage() {
                 onChange={(e) => setFormUnits(e.target.value)}
                 className="font-mono text-xs"
               />
-              {formLeg === "LINE" ? (
+              {formMarketType === "LINE" ? (
                 <Input
                   placeholder="Line (e.g. -6.5 or +12.5)"
                   value={formLine}

@@ -338,9 +338,9 @@ Deno.serve(async (req) => {
       ...new Set(
         completed
           .map((g) => g.round)
-          .filter((r): r is number => typeof r === "number")
+          .filter((r): r is number => typeof r === "number" && Number.isFinite(r))
       ),
-    ];
+    ].sort((a, b) => a - b);
 
     let contextsUpserted = 0;
 

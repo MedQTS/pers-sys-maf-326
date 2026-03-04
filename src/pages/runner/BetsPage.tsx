@@ -21,6 +21,7 @@ export default function BetsPage() {
   const [formPrice, setFormPrice] = useState("");
   const [formUnits, setFormUnits] = useState("1");
   const [formLine, setFormLine] = useState("");
+  const [formBook, setFormBook] = useState("");
   const [formNotes, setFormNotes] = useState("");
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function BetsPage() {
       price: parseFloat(formPrice),
       units: parseFloat(formUnits),
       line_at_bet: formMarketType === "LINE" ? parseFloat(formLine) : null,
+      book: formBook || null,
       notes: formNotes || null,
     });
 
@@ -79,6 +81,7 @@ export default function BetsPage() {
       toast.success("Bet logged");
       setShowForm(false);
       setFormPrice("");
+      setFormBook("");
       setFormNotes("");
       loadData();
     }
@@ -162,6 +165,14 @@ export default function BetsPage() {
                   className="font-mono text-xs"
                 />
               )}
+              <Input
+                placeholder="Book (optional)"
+                value={formBook}
+                onChange={(e) => setFormBook(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Input
                 placeholder="Notes"
                 value={formNotes}

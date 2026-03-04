@@ -1,31 +1,32 @@
 
 
-## Block 1/2 — Harden normName matching in `pers-sys-pull-odds-snapshot/index.ts`
+## Plan: Refactor Dashboard to Two-Column Layout with Step Cards
 
-Four changes within the existing file:
+**Goal**: Transform the current 3-column grid (screenshot 1) into the two-column layout with explainers, "when to run" guidance, DB-derived "last run" timestamps, and status badges (screenshot 2).
 
-**1a. Replace `normName` helper** (line 150-152) with the enhanced version that strips `&→and`, punctuation, hyphens, and fluff tokens (`fc`, `football`, `club`, `afl`, `the`). Add a `normSet` helper that builds a `Set<string>` from an array of nullable strings.
+### Single file change: `src/pages/runner/Dashboard.tsx`
 
-**1b. Replace `teamById` construction** (lines 145-159) to use a `TeamInfo` type with a `norm_names: Set<string>` field built from both `canonical_name` and `oddsapi_name`. Remove the separate `teamIdByNorm` map — matching will use per-team norm sets instead.
+**Layout**: Replace the `grid-cols-3` with a `grid-cols-2` layout:
+- **Left column ("PIPELINE STEPS")**: Pull Squiggle, Build Features, Evaluate Systems, Settle Bets
+- **Right column ("ODDS SNAPSHOTS")**: Pull OPEN, Pull T60, Pull T30, Pull T10
 
-**1c. Replace `matchedEvent` selection** (lines 185-200) to use `expectedHome.norm_names.has(normName(ev.home_team))` instead of the `teamIdByNorm` lookup. Keep the 6-hour `TOL_MS` time tolerance. The `homeInfo`/`awayInfo` variables become `expectedHome`/`expectedAway` of type `TeamInfo`.
+**Keep**: Weekly Pipeline card at top (unchanged), `RunButton` component (reused inside each card).
 
-**1d. Replace outcome name matching in H2H and spreads loops** (lines 252-256, 288-292) to use `expectedHome.norm_names.has(normName(o.name))` / `expectedAway.norm_names.has(...)` instead of the current case-insensitive string equality checks.
+**Add per-step metadata** below each `RunButton`:
+- 1-line explainer (e.g., "Loads fixtures/results from Squiggle and updates games.")
+- "When to run" line with clock icon (e.g., "Weekly: Sun ~11:00pm (AET).")
+- "Last run" timestamp + status badge ("OK" / "NO DATA")
 
-No other logic changes — all reference/exec aggregation, median, upsert, and diagnostics remain identical.
+**"Last run" derivation** via `useEffect` + `Promise.all` on mount — no new tables:
+- `pull_squiggle`: `pers_sys_games` → `MAX(updated_at)`
+- `build_features`: `pers_sys_team_state` → `MAX(updated_at)`
+- `evaluate`: `pers_sys_signals` → `MAX(created_at)`
+- `settle`: `pers_sys_bets` where `status='SETTLED'` → `MAX(created_at)`
+- Snapshots (OPEN/T60/T30/T10): `pers_sys_market_snapshots` filtered by `snapshot_type` → `MAX(created_at)`
 
----
+**Status badge**: green "OK" if timestamp exists, muted "NO DATA" if null.
 
-## Block 2/2 — New `pers-sys-audit-oddsapi-names` edge function
+**Timestamp format**: `en-AU` locale string.
 
-**New file**: `supabase/functions/pers-sys-audit-oddsapi-names/index.ts`
-
-Calls the OddsAPI `/participants` endpoint (cost: 1 API call), loads `pers_sys_teams`, and cross-references using the same `normName` logic. Returns:
-- `unmapped_participants` — API names that don't match any team (no_match or ambiguous)
-- `teams_needing_attention` — teams missing `oddsapi_name` or whose `oddsapi_name` doesn't match any participant
-- Optional `apply=true` mode: auto-fills `oddsapi_name` where a unique suggestion exists
-
-**Config**: Add `[functions.pers-sys-audit-oddsapi-names] verify_jwt = false` to `supabase/config.toml`.
-
-**Deploy** both functions after changes.
+Each step card wraps the existing `RunButton` (preserving its loading/result JSON display) with the metadata text below it — matching screenshot 2's visual structure.
 

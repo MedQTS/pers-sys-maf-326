@@ -13,12 +13,7 @@ type SignalRow = {
   created_at: string;
 };
 
-const MAYBE_FAIL_KEYS = new Set([
-  "missing_model_data",
-  "missing_open_odds",
-  "missing_odds",
-  "missing_data",
-]);
+const MAYBE_FAIL_KEYS = new Set(["missing_model_data", "missing_open_odds", "missing_odds", "missing_data"]);
 
 function safeJson(x: any) {
   if (x == null) return null;
@@ -84,7 +79,7 @@ export default function WeekView_v2() {
           *,
           home_team:pers_sys_teams!pers_sys_games_home_team_id_fkey(canonical_name),
           away_team:pers_sys_teams!pers_sys_games_away_team_id_fkey(canonical_name)
-        `
+        `,
         )
         .eq("season", season)
         .gte("start_time_aet", nowIso)
@@ -106,7 +101,7 @@ export default function WeekView_v2() {
       const gameIds = gamesData.map((g: any) => g.id);
 
       const { data: sigs, error: sigErr } = await supabase
-        .from("pers_sys_signals")
+        .from("pers_sys_signals_v2")
         .select("id,game_id,system_code,snapshot_type,pass,reason,created_at")
         .in("game_id", gameIds);
 
@@ -189,11 +184,7 @@ export default function WeekView_v2() {
                 games={games.length} ready_games={readyGames.length} pending_signals={pendingCount}
               </div>
             )}
-            {err && (
-              <div className="text-[11px] font-mono text-destructive mt-1">
-                {String(err?.message || err)}
-              </div>
-            )}
+            {err && <div className="text-[11px] font-mono text-destructive mt-1">{String(err?.message || err)}</div>}
           </div>
 
           <div className="flex items-center gap-2">
@@ -237,9 +228,7 @@ export default function WeekView_v2() {
 
               {readyGames.length === 0 ? (
                 <div className="runner-card">
-                  <p className="text-sm text-muted-foreground text-center py-2">
-                    No bets ready right now.
-                  </p>
+                  <p className="text-sm text-muted-foreground text-center py-2">No bets ready right now.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -278,9 +267,7 @@ export default function WeekView_v2() {
               </div>
 
               {games.length === 0 && (
-                <p className="text-muted-foreground text-sm">
-                  No upcoming games. Run "Pull Squiggle" first.
-                </p>
+                <p className="text-muted-foreground text-sm">No upcoming games. Run "Pull Squiggle" first.</p>
               )}
             </div>
           </>
@@ -308,20 +295,17 @@ function GameCard(props: {
     variant === "ready"
       ? "border-emerald-500/30 bg-emerald-500/5"
       : variant === "live"
-      ? "border-slate-500/30 bg-slate-500/5"
-      : "border-border";
+        ? "border-slate-500/30 bg-slate-500/5"
+        : "border-border";
 
   return (
     <Link to={`/runner/game/${game.id}`} className="block">
       <div className={`runner-card ${borderClass}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="text-xs text-muted-foreground font-mono w-16">
-              R{game.round}
-            </div>
+            <div className="text-xs text-muted-foreground font-mono w-16">R{game.round}</div>
             <div className="font-medium text-sm">
-              {homeTeam} <span className="text-muted-foreground mx-1">v</span>{" "}
-              {awayTeam}
+              {homeTeam} <span className="text-muted-foreground mx-1">v</span> {awayTeam}
             </div>
           </div>
 
@@ -340,10 +324,7 @@ function GameCard(props: {
 
             {!betPlaced &&
               readySignals.map((s) => (
-                <span
-                  key={s.id}
-                  className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary"
-                >
+                <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                   {s.system_code}
                 </span>
               ))}
@@ -378,14 +359,9 @@ function GameCard(props: {
                 const key = `${s.id}_${idx}`;
                 const f = formatLeg(leg);
                 return (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between gap-3 text-[11px] font-mono"
-                  >
+                  <div key={key} className="flex items-center justify-between gap-3 text-[11px] font-mono">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-muted text-foreground">
-                        {s.system_code}
-                      </span>
+                      <span className="px-2 py-0.5 rounded bg-muted text-foreground">{s.system_code}</span>
                       <span className="text-muted-foreground">
                         {f.market} {f.side}
                         {f.line}
@@ -403,10 +379,7 @@ function GameCard(props: {
                         e.stopPropagation();
                         try {
                           const r = safeJson(s.reason) || {};
-                          const unitsOverride =
-                            s.system_code === "SYS_7"
-                              ? r?.recommended_units ?? null
-                              : null;
+                          const unitsOverride = s.system_code === "SYS_7" ? (r?.recommended_units ?? null) : null;
 
                           const payload = {
                             p_game_id: game.id,
@@ -421,17 +394,12 @@ function GameCard(props: {
                             p_snapshot_type: leg.snapshot_type ?? null,
                           };
 
-                          const { data, error } = await supabase.rpc(
-                            "accept_leg_create_bet",
-                            payload
-                          );
+                          const { data, error } = await supabase.rpc("accept_leg_create_bet", payload);
                           if (error) {
                             alert(`ACCEPT failed: ${error.message}`);
                             return;
                           }
-                          alert(
-                            `ACCEPT result:\n${JSON.stringify(data, null, 2)}`
-                          );
+                          alert(`ACCEPT result:\n${JSON.stringify(data, null, 2)}`);
                           window.location.reload();
                         } catch (err: any) {
                           alert(`ACCEPT failed: ${String(err)}`);
@@ -450,27 +418,16 @@ function GameCard(props: {
         {/* PENDING (only shown when explode ON) */}
         {showPending && !betPlaced && pendingSignals.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-            <div className="text-[10px] font-mono text-muted-foreground mb-1">
-              Pending / Maybe (hidden by default)
-            </div>
+            <div className="text-[10px] font-mono text-muted-foreground mb-1">Pending / Maybe (hidden by default)</div>
             {pendingSignals.slice(0, 6).map((s) => {
               const failKey = getFailKey(s) || "pending";
               return (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between text-[11px] font-mono"
-                >
+                <div key={s.id} className="flex items-center justify-between text-[11px] font-mono">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">
-                      {s.system_code}
-                    </span>
-                    <span className="text-muted-foreground">
-                      waiting: {failKey}
-                    </span>
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">{s.system_code}</span>
+                    <span className="text-muted-foreground">waiting: {failKey}</span>
                   </div>
-                  <span className="text-muted-foreground">
-                    {s.snapshot_type || "—"}
-                  </span>
+                  <span className="text-muted-foreground">{s.snapshot_type || "—"}</span>
                 </div>
               );
             })}

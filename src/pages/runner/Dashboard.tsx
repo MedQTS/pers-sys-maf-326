@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import RunnerLayout from "@/components/RunnerLayout";
 import RunButton from "@/components/RunButton";
 import { supabase } from "@/lib/api";
+import { formatAET } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -12,12 +13,7 @@ const currentSeason = new Date().getFullYear();
 type LastRunMap = Record<string, string | null>;
 
 function fmtTs(iso: string | null | undefined) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("en-AU");
-  } catch {
-    return iso;
-  }
+  return formatAET(iso, "datetime");
 }
 
 function StepCard({
@@ -64,7 +60,7 @@ export default function Dashboard() {
   const [runningWeekly, setRunningWeekly] = useState(false);
   const [lastRun, setLastRun] = useState<LastRunMap>({});
 
-  const weeklyLabel = useMemo(() => "Weekly: Sun ~11:00pm (AET)", []);
+  const weeklyLabel = useMemo(() => "Weekly: Sun ~11:00pm (Australia/Melbourne)", []);
 
   useEffect(() => {
     async function fetchLastRuns() {
@@ -175,7 +171,7 @@ export default function Dashboard() {
               functionName="pers-sys-pull-squiggle"
               body={{ season: currentSeason }}
               explainer="Loads fixtures/results from Squiggle and updates games."
-              whenToRun="Weekly: Sun ~11:00pm (AET)."
+              whenToRun="Weekly: Sun ~11:00pm (Australia/Melbourne)."
               lastRun={lastRun.pull_squiggle}
             />
 
@@ -218,7 +214,7 @@ export default function Dashboard() {
               body={{ snapshot_type: "OPEN" }}
               variant="secondary"
               explainer="Pulls opening odds snapshot and stores market lines/prices."
-              whenToRun="Weekly: Sun ~11:00pm (AET), after Pull Squiggle."
+              whenToRun="Weekly: Sun ~11:00pm (Australia/Melbourne), after Pull Squiggle."
               lastRun={lastRun.pull_open}
             />
 

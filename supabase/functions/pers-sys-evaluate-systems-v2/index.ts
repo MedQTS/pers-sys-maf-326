@@ -452,7 +452,7 @@ Deno.serve(async (req) => {
       for (const game of upcomingGames as any[]) {
         const g = game as GameRow;
         const round = g.round;
-        if (!round) continue;
+        if (round === null || round === undefined) continue;
 
         // season excludes
         if (Array.isArray(sys.exclude_seasons) && sys.exclude_seasons.includes(season)) continue;

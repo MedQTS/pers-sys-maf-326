@@ -164,10 +164,19 @@ Deno.serve(async (req) => {
     const usedReferenceKeys = new Set<string>();
     const usedExecutionKeys = new Set<string>();
 
+    // Diagnostic counters
+    let skipped_no_team_map = 0;
+    let skipped_no_event_match = 0;
+    let skipped_no_ref_h2h = 0;
+    let skipped_no_ref_line = 0;
+    let skipped_no_exec_books = 0;
+
+    const TOL_MS = 6 * 60 * 60 * 1000;
+
     for (const game of eligibleGames) {
       const homeInfo = teamById[game.home_team_id];
       const awayInfo = teamById[game.away_team_id];
-      if (!homeInfo || !awayInfo) continue;
+      if (!homeInfo || !awayInfo) { skipped_no_team_map++; continue; }
 
       const homeNames = new Set<string>(
         [homeInfo.canonical_name, homeInfo.oddsapi_name].filter(Boolean) as string[]
@@ -176,15 +185,20 @@ Deno.serve(async (req) => {
         [awayInfo.canonical_name, awayInfo.oddsapi_name].filter(Boolean) as string[]
       );
 
+      const gameTs = new Date(game.start_time_aet).getTime();
+
       const matchedEvent = oddsEvents.find((ev: any) => {
         const home = String(ev.home_team || "");
         const away = String(ev.away_team || "");
         const homeOk = [...homeNames].some((n) => n.toLowerCase() === home.toLowerCase());
         const awayOk = [...awayNames].some((n) => n.toLowerCase() === away.toLowerCase());
-        return homeOk && awayOk;
+        if (!homeOk || !awayOk) return false;
+        const evTs = new Date(ev.commence_time).getTime();
+        if (Number.isNaN(evTs) || Number.isNaN(gameTs)) return false;
+        return Math.abs(evTs - gameTs) <= TOL_MS;
       });
 
-      if (!matchedEvent) continue;
+      if (!matchedEvent) { skipped_no_event_match++; continue; }
 
       if (!game.oddsapi_event_id && matchedEvent.id) {
         await supabase
@@ -246,7 +260,8 @@ Deno.serve(async (req) => {
                 if (isRef) { refH2hBooks.add(bmKey); refHomePrices.push(price); }
                 if (isExec) {
                   execH2hBooks.add(bmKey);
-                  if (execBestHomePrice === null || price > execBestHomePrice) {
+                  if (execBestHomePrice === null || price > execBestHomePrice ||
+                      (price === execBestHomePrice && (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestHomeBook!) ?? 9999))) {
                     execBestHomePrice = price;
                     execBestHomeBook = bmKey;
                   }
@@ -256,7 +271,8 @@ Deno.serve(async (req) => {
                 if (isRef) { refH2hBooks.add(bmKey); refAwayPrices.push(price); }
                 if (isExec) {
                   execH2hBooks.add(bmKey);
-                  if (execBestAwayPrice === null || price > execBestAwayPrice) {
+                  if (execBestAwayPrice === null || price > execBestAwayPrice ||
+                      (price === execBestAwayPrice && (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestAwayBook!) ?? 9999))) {
                     execBestAwayPrice = price;
                     execBestAwayBook = bmKey;
                   }
@@ -335,6 +351,8 @@ Deno.serve(async (req) => {
           { onConflict: "game_id,snapshot_type,market_type,agg_method" }
         );
         if (!error) snapshotsStored += 1;
+      } else {
+        skipped_no_ref_h2h++;
       }
 
       // Store LINE snapshot (reference medians + best-exec anchored to reference median line)
@@ -347,8 +365,8 @@ Deno.serve(async (req) => {
         const refHomeLineMed = median(refHomeLines);
         const refAwayLineMed = median(refAwayLines);
 
-        const bestHomeLine = pickBestLineAtAnchor(execHomeLineCandidates, refHomeLineMed || null);
-        const bestAwayLine = pickBestLineAtAnchor(execAwayLineCandidates, refAwayLineMed || null);
+        const bestHomeLine = pickBestLineAtAnchor(execHomeLineCandidates, Number.isFinite(refHomeLineMed) ? refHomeLineMed : null);
+        const bestAwayLine = pickBestLineAtAnchor(execAwayLineCandidates, Number.isFinite(refAwayLineMed) ? refAwayLineMed : null);
 
         const { error } = await supabase.from("pers_sys_market_snapshots").upsert(
           {
@@ -374,6 +392,8 @@ Deno.serve(async (req) => {
           { onConflict: "game_id,snapshot_type,market_type,agg_method" }
         );
         if (!error) snapshotsStored += 1;
+      } else {
+        skipped_no_ref_line++;
       }
     }
 
@@ -386,6 +406,11 @@ Deno.serve(async (req) => {
         observed_bookmaker_keys: Array.from(observedBookKeys).sort(),
         reference_books_used: Array.from(usedReferenceKeys).sort(),
         execution_books_used: Array.from(usedExecutionKeys).sort(),
+        skipped_no_team_map,
+        skipped_no_event_match,
+        skipped_no_ref_h2h,
+        skipped_no_ref_line,
+        skipped_no_exec_books,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

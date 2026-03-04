@@ -65,15 +65,21 @@ type GameRow = {
   away_team?: { canonical_name: string | null; home_state?: string | null };
 };
 
-function mmdd(d: Date) {
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${m}-${day}`;
+function mmddMelbourne(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${m}-${d}`;
 }
 
 function inDateWindowAET(startMMDD: string, endMMDD: string, dateAET: Date) {
   // Assumes window does not cross year boundary (true for AFL season windows)
-  const x = mmdd(dateAET);
+  const x = mmddMelbourne(dateAET);
   return x >= startMMDD && x <= endMMDD;
 }
 

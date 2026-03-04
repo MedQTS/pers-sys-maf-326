@@ -335,8 +335,12 @@ Deno.serve(async (req) => {
 
     // Build round context (8th place cutline)
     const roundNumbers = [
-      ...new Set(completed.map((g) => g.round).filter(Boolean)),
-    ] as number[];
+      ...new Set(
+        completed
+          .map((g) => g.round)
+          .filter((r): r is number => typeof r === "number")
+      ),
+    ];
 
     let contextsUpserted = 0;
 

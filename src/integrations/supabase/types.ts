@@ -695,6 +695,171 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_systems_v2: {
+        Row: {
+          active: boolean | null
+          allow_candidate: boolean | null
+          amplifier_config: Json | null
+          close_odds_max: number | null
+          close_odds_min: number | null
+          clv_min: number | null
+          clv_required: boolean | null
+          created_at: string | null
+          date_end_mmdd: string | null
+          date_start_mmdd: string | null
+          dead_team_points_behind_8th_min: number | null
+          dog_close_odds_max: number | null
+          dog_close_odds_min: number | null
+          draw_counts_as_loss: boolean | null
+          evaluation_version: number | null
+          exclude_gf_replay: boolean | null
+          exclude_seasons: number[] | null
+          exclude_states: string[] | null
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          fav_close_odds_max: number | null
+          fav_close_odds_min: number | null
+          fav_streak_min: number | null
+          gf_winner_must_be_favourite_open: boolean | null
+          gf_winner_required: boolean | null
+          interstate_required: boolean | null
+          line_clv_positive_required: boolean | null
+          line_clv_required: boolean | null
+          loss_streak_required: boolean | null
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          open_odds_max: number | null
+          open_odds_min: number | null
+          opponent_must_be_top8: boolean | null
+          opponent_wins_max: number | null
+          overlay_config: Json | null
+          overlay_market: Database["public"]["Enums"]["sys_market"] | null
+          primary_market: Database["public"]["Enums"]["sys_market"]
+          require_away_dog: boolean | null
+          require_close_line_gt_zero: boolean | null
+          require_home_dog: boolean | null
+          require_home_favourite: boolean | null
+          round_max: number | null
+          round_min: number | null
+          rounds_remaining_max: number | null
+          rounds_remaining_min: number | null
+          season_progress_round_min: number | null
+          staking_config: Json | null
+          system_code: string
+          system_group: string | null
+          system_name: string
+          system_priority: number | null
+          updated_at: string | null
+          venue_states_allowed: string[] | null
+        }
+        Insert: {
+          active?: boolean | null
+          allow_candidate?: boolean | null
+          amplifier_config?: Json | null
+          close_odds_max?: number | null
+          close_odds_min?: number | null
+          clv_min?: number | null
+          clv_required?: boolean | null
+          created_at?: string | null
+          date_end_mmdd?: string | null
+          date_start_mmdd?: string | null
+          dead_team_points_behind_8th_min?: number | null
+          dog_close_odds_max?: number | null
+          dog_close_odds_min?: number | null
+          draw_counts_as_loss?: boolean | null
+          evaluation_version?: number | null
+          exclude_gf_replay?: boolean | null
+          exclude_seasons?: number[] | null
+          exclude_states?: string[] | null
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          fav_close_odds_max?: number | null
+          fav_close_odds_min?: number | null
+          fav_streak_min?: number | null
+          gf_winner_must_be_favourite_open?: boolean | null
+          gf_winner_required?: boolean | null
+          interstate_required?: boolean | null
+          line_clv_positive_required?: boolean | null
+          line_clv_required?: boolean | null
+          loss_streak_required?: boolean | null
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          open_odds_max?: number | null
+          open_odds_min?: number | null
+          opponent_must_be_top8?: boolean | null
+          opponent_wins_max?: number | null
+          overlay_config?: Json | null
+          overlay_market?: Database["public"]["Enums"]["sys_market"] | null
+          primary_market: Database["public"]["Enums"]["sys_market"]
+          require_away_dog?: boolean | null
+          require_close_line_gt_zero?: boolean | null
+          require_home_dog?: boolean | null
+          require_home_favourite?: boolean | null
+          round_max?: number | null
+          round_min?: number | null
+          rounds_remaining_max?: number | null
+          rounds_remaining_min?: number | null
+          season_progress_round_min?: number | null
+          staking_config?: Json | null
+          system_code: string
+          system_group?: string | null
+          system_name: string
+          system_priority?: number | null
+          updated_at?: string | null
+          venue_states_allowed?: string[] | null
+        }
+        Update: {
+          active?: boolean | null
+          allow_candidate?: boolean | null
+          amplifier_config?: Json | null
+          close_odds_max?: number | null
+          close_odds_min?: number | null
+          clv_min?: number | null
+          clv_required?: boolean | null
+          created_at?: string | null
+          date_end_mmdd?: string | null
+          date_start_mmdd?: string | null
+          dead_team_points_behind_8th_min?: number | null
+          dog_close_odds_max?: number | null
+          dog_close_odds_min?: number | null
+          draw_counts_as_loss?: boolean | null
+          evaluation_version?: number | null
+          exclude_gf_replay?: boolean | null
+          exclude_seasons?: number[] | null
+          exclude_states?: string[] | null
+          execution_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          fav_close_odds_max?: number | null
+          fav_close_odds_min?: number | null
+          fav_streak_min?: number | null
+          gf_winner_must_be_favourite_open?: boolean | null
+          gf_winner_required?: boolean | null
+          interstate_required?: boolean | null
+          line_clv_positive_required?: boolean | null
+          line_clv_required?: boolean | null
+          loss_streak_required?: boolean | null
+          model_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          open_odds_max?: number | null
+          open_odds_min?: number | null
+          opponent_must_be_top8?: boolean | null
+          opponent_wins_max?: number | null
+          overlay_config?: Json | null
+          overlay_market?: Database["public"]["Enums"]["sys_market"] | null
+          primary_market?: Database["public"]["Enums"]["sys_market"]
+          require_away_dog?: boolean | null
+          require_close_line_gt_zero?: boolean | null
+          require_home_dog?: boolean | null
+          require_home_favourite?: boolean | null
+          round_max?: number | null
+          round_min?: number | null
+          rounds_remaining_max?: number | null
+          rounds_remaining_min?: number | null
+          season_progress_round_min?: number | null
+          staking_config?: Json | null
+          system_code?: string
+          system_group?: string | null
+          system_name?: string
+          system_priority?: number | null
+          updated_at?: string | null
+          venue_states_allowed?: string[] | null
+        }
+        Relationships: []
+      }
       pers_sys_team_state: {
         Row: {
           asof_ts: string
@@ -1591,7 +1756,9 @@ export type Database = {
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
     }
     Enums: {
-      [_ in never]: never
+      sys_market: "H2H" | "LINE"
+      sys_signal_mode: "HARD_FAIL" | "ALLOW_CANDIDATE"
+      sys_snapshot: "OPEN" | "T30" | "T10"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1718,6 +1885,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      sys_market: ["H2H", "LINE"],
+      sys_signal_mode: ["HARD_FAIL", "ALLOW_CANDIDATE"],
+      sys_snapshot: ["OPEN", "T30", "T10"],
+    },
   },
 } as const

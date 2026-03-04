@@ -692,6 +692,100 @@ export type Database = {
           },
         ]
       }
+      pers_sys_signals_v2: {
+        Row: {
+          created_at: string
+          evaluated_at: string
+          exec_best_book: string | null
+          exec_best_price: number | null
+          execution_market: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          game_id: string
+          id: string
+          leg_type: Database["public"]["Enums"]["sys_leg_type"]
+          line_at_bet: number | null
+          model_market: Database["public"]["Enums"]["sys_market"]
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          parent_signal_id: string | null
+          pass: boolean
+          reason_json: Json
+          recommended_units: number | null
+          ref_price: number | null
+          side: Database["public"]["Enums"]["sys_side"]
+          signal_status: Database["public"]["Enums"]["sys_signal_status"]
+          system_code: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          evaluated_at?: string
+          exec_best_book?: string | null
+          exec_best_price?: number | null
+          execution_market: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          game_id: string
+          id?: string
+          leg_type: Database["public"]["Enums"]["sys_leg_type"]
+          line_at_bet?: number | null
+          model_market: Database["public"]["Enums"]["sys_market"]
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          parent_signal_id?: string | null
+          pass?: boolean
+          reason_json?: Json
+          recommended_units?: number | null
+          ref_price?: number | null
+          side: Database["public"]["Enums"]["sys_side"]
+          signal_status?: Database["public"]["Enums"]["sys_signal_status"]
+          system_code: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          evaluated_at?: string
+          exec_best_book?: string | null
+          exec_best_price?: number | null
+          execution_market?: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          game_id?: string
+          id?: string
+          leg_type?: Database["public"]["Enums"]["sys_leg_type"]
+          line_at_bet?: number | null
+          model_market?: Database["public"]["Enums"]["sys_market"]
+          model_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          parent_signal_id?: string | null
+          pass?: boolean
+          reason_json?: Json
+          recommended_units?: number | null
+          ref_price?: number | null
+          side?: Database["public"]["Enums"]["sys_side"]
+          signal_status?: Database["public"]["Enums"]["sys_signal_status"]
+          system_code?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_signals_v2_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_signals_v2_parent_signal_id_fkey"
+            columns: ["parent_signal_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_signals_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_signals_v2_system_code_fkey"
+            columns: ["system_code"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_systems_v2"
+            referencedColumns: ["system_code"]
+          },
+        ]
+      }
       pers_sys_systems: {
         Row: {
           active: boolean
@@ -1789,7 +1883,9 @@ export type Database = {
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
     }
     Enums: {
+      sys_leg_type: "H2H" | "LINE"
       sys_market: "H2H" | "LINE"
+      sys_side: "HOME" | "AWAY"
       sys_signal_mode: "HARD_FAIL" | "ALLOW_CANDIDATE"
       sys_signal_status: "READY" | "PENDING"
       sys_snapshot: "OPEN" | "T30" | "T10"
@@ -1920,7 +2016,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      sys_leg_type: ["H2H", "LINE"],
       sys_market: ["H2H", "LINE"],
+      sys_side: ["HOME", "AWAY"],
       sys_signal_mode: ["HARD_FAIL", "ALLOW_CANDIDATE"],
       sys_signal_status: ["READY", "PENDING"],
       sys_snapshot: ["OPEN", "T30", "T10"],

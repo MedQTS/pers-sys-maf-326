@@ -134,7 +134,7 @@ export default function Dashboard() {
         await pollLastRun("pull_open");
       }
       {
-        const { error } = await supabase.functions.invoke("pers-sys-evaluate-systems", { body: { season: currentSeason } });
+        const { error } = await supabase.functions.invoke("pers-sys-evaluate-systems-v2", { body: { season: currentSeason } });
         if (error) throw new Error(`Evaluate Systems failed: ${error.message}`);
         toast.success("4/4 Evaluate Systems OK");
         await pollLastRun("evaluate");
@@ -202,7 +202,7 @@ export default function Dashboard() {
 
             <StepCard
               label="Evaluate Systems"
-              functionName="pers-sys-evaluate-systems"
+              functionName="pers-sys-evaluate-systems-v2"
               body={{ season: currentSeason }}
               explainer="Evaluates systems and writes PASS/FAIL signals for upcoming games."
               whenToRun="After your latest snapshot pull (OPEN or T-snap)."

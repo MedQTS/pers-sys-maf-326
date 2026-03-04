@@ -270,6 +270,11 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const season = body.season || new Date().getFullYear();
 
+    const horizonDays = Number(body.horizon_days ?? 10);
+    const now = new Date();
+    const startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(); // -1 day buffer
+    const endIso = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000).toISOString();
+
     // Locked close definition
     const CLOSE_SNAPSHOT_TYPE = "T10" as const;
 
@@ -298,7 +303,10 @@ Deno.serve(async (req) => {
       )
       .eq("season", season)
       .eq("status", "SCHEDULED")
-      .order("start_time_aet");
+      .gte("start_time_aet", startIso)
+      .lte("start_time_aet", endIso)
+      .order("start_time_aet", { ascending: true })
+      .limit(120);
 
     if (gamesErr) throw gamesErr;
 
@@ -1267,7 +1275,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, season, signals_created: signalsCreated }),
+      JSON.stringify({ ok: true, season, signals_created: signalsCreated, horizon_days: horizonDays, window: { startIso, endIso } }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

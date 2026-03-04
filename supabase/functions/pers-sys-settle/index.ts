@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
     const { data: unsettledBets } = await supabase
       .from("pers_sys_bets")
       .select("*, game:pers_sys_games!pers_sys_bets_game_id_fkey(*)")
-      .is("result", null);
+      .eq("status", "UNSETTLED");
 
     if (!unsettledBets || unsettledBets.length === 0) {
       return new Response(
@@ -41,8 +41,7 @@ Deno.serve(async (req) => {
       let result: "WIN" | "LOSS" | "PUSH" = "LOSS";
       let profitUnits = -bet.units;
 
-      if (bet.side === "HOME" || bet.side === "AWAY") {
-        // H2H bet
+      if (bet.leg_type === "H2H") {
         if (game.is_draw) {
           result = "PUSH";
           profitUnits = 0;
@@ -53,16 +52,10 @@ Deno.serve(async (req) => {
           result = "WIN";
           profitUnits = bet.units * (bet.price - 1);
         }
-      } else if (bet.side === "HOME_LINE" || bet.side === "AWAY_LINE") {
-        // Line bet
+      } else if (bet.leg_type === "LINE") {
         const line = bet.line_at_bet ?? 0;
-        let adjustedMargin: number;
-
-        if (bet.side === "HOME_LINE") {
-          adjustedMargin = marginHome + line;
-        } else {
-          adjustedMargin = -marginHome + line;
-        }
+        const teamMargin = bet.side === "HOME" ? marginHome : -marginHome;
+        const adjustedMargin = teamMargin + line;
 
         if (adjustedMargin === 0) {
           result = "PUSH";
@@ -77,7 +70,7 @@ Deno.serve(async (req) => {
 
       const { error } = await supabase
         .from("pers_sys_bets")
-        .update({ result, profit_units: profitUnits })
+        .update({ result, profit_units: profitUnits, status: "SETTLED" })
         .eq("id", bet.id);
 
       if (!error) settled++;

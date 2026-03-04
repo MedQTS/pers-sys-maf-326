@@ -55,13 +55,37 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Parse date - Squiggle 'date' is UTC ISO. Prefer it. Fallback to unixtime if needed.
-      let startTime: string | null = null;
-      if (g.date) {
-        startTime = new Date(g.date).toISOString();
-      } else if (g.unixtime) {
-        startTime = new Date(Number(g.unixtime) * 1000).toISOString();
-      } else {
+      // Parse date as a true UTC instant.
+      // Squiggle typically provides `date` as UTC ISO (with Z). If not, prefer `unixtime`.
+      // If `date` is missing a timezone but `tz` exists (e.g. "+10:00"), interpret `date` in that timezone.
+      let startTimeUtc: string | null = null;
+
+      const hasTzInfo = (s: string) =>
+        /Z$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
+
+      if (g.date && typeof g.date === "string") {
+        const raw = g.date.trim();
+
+        if (hasTzInfo(raw)) {
+          const d = new Date(raw);
+          if (!Number.isNaN(d.getTime())) startTimeUtc = d.toISOString();
+        } else if (g.tz && typeof g.tz === "string") {
+          // Build an ISO string with explicit offset, e.g. "2026-03-14T16:15:00+11:00"
+          const isoLocal = raw.includes("T") ? raw : raw.replace(" ", "T");
+          const withOffset = `${isoLocal}${g.tz}`;
+          const d = new Date(withOffset);
+          if (!Number.isNaN(d.getTime())) startTimeUtc = d.toISOString();
+        } else {
+          // No timezone in `date` and no `tz` field — fall back to unixtime if available
+        }
+      }
+
+      if (!startTimeUtc && g.unixtime) {
+        const d = new Date(Number(g.unixtime) * 1000);
+        if (!Number.isNaN(d.getTime())) startTimeUtc = d.toISOString();
+      }
+
+      if (!startTimeUtc) {
         // As a last resort, skip malformed rows
         skipped++;
         continue;
@@ -103,7 +127,7 @@ Deno.serve(async (req) => {
         {
           season,
           round: g.round ?? null,
-          start_time_aet: startTime,
+          start_time_aet: startTimeUtc,
           venue: g.venue ?? null,
           home_team_id: homeTeamId,
           away_team_id: awayTeamId,

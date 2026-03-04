@@ -3,7 +3,7 @@ import { Activity, Calendar, Crosshair, DollarSign, TrendingUp } from "lucide-re
 
 const navItems = [
   { to: "/runner", label: "Dashboard", icon: Activity },
-  { to: "/runner/week", label: "Week", icon: Calendar },
+  { to: "/runner/week-v2", label: "Week", icon: Calendar },
   { to: "/runner/bets", label: "Bets", icon: DollarSign },
   { to: "/runner/performance", label: "Performance", icon: TrendingUp },
 ];

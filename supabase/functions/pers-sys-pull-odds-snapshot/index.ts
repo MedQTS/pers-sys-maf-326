@@ -187,6 +187,15 @@ Deno.serve(async (req) => {
     }
     const oddsEvents = await oddsResp.json();
 
+    // Fast path: exact id match if game.oddsapi_event_id already known
+    const oddsEventById = new Map<string, any>();
+    if (Array.isArray(oddsEvents)) {
+      for (const ev of oddsEvents) {
+        const id = String(ev?.id || "").trim();
+        if (id) oddsEventById.set(id, ev);
+      }
+    }
+
     const snapshotTs = now.toISOString();
     let snapshotsStored = 0;
     const observedBookKeys = new Set<string>();
@@ -209,17 +218,31 @@ Deno.serve(async (req) => {
 
       const gameTs = new Date(game.start_time_aet).getTime();
 
-      const matchedEvent = oddsEvents.find((ev: any) => {
-        const home = normName(String(ev.home_team || ""));
-        const away = normName(String(ev.away_team || ""));
-        if (!home || !away) return false;
-        const homeOk = expectedHome.norm_names.has(home);
-        const awayOk = expectedAway.norm_names.has(away);
-        if (!homeOk || !awayOk) return false;
-        const evTs = new Date(ev.commence_time).getTime();
-        if (Number.isNaN(evTs) || Number.isNaN(gameTs)) return false;
-        return Math.abs(evTs - gameTs) <= TOL_MS;
-      });
+      // 1) Prefer exact id match (most reliable)
+      let matchedEvent: any | undefined = undefined;
+
+      const existingEventId = String(game.oddsapi_event_id || "").trim();
+      if (existingEventId) {
+        matchedEvent = oddsEventById.get(existingEventId);
+      }
+
+      // 2) Fallback to name + time tolerance match
+      if (!matchedEvent) {
+        matchedEvent = (oddsEvents as any[]).find((ev: any) => {
+          const home = normName(String(ev.home_team || ""));
+          const away = normName(String(ev.away_team || ""));
+          if (!home || !away) return false;
+
+          const homeOk = expectedHome.norm_names.has(home);
+          const awayOk = expectedAway.norm_names.has(away);
+          if (!homeOk || !awayOk) return false;
+
+          const evTs = new Date(ev.commence_time).getTime();
+          if (Number.isNaN(evTs) || Number.isNaN(gameTs)) return false;
+
+          return Math.abs(evTs - gameTs) <= TOL_MS;
+        });
+      }
 
       if (!matchedEvent) { skipped_no_event_match++; continue; }
 

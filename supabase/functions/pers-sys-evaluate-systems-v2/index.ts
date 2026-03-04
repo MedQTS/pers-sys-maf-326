@@ -394,23 +394,47 @@ Deno.serve(async (req) => {
       }
     }
 
-    async function upsertSignal(args: {
+    async function upsertSignalV2(args: {
       system_code: string;
       game_id: string;
-      snapshot_type: string;
+      model_snapshot: string;
+      execution_snapshot: string;
+      model_market: MarketType;
+      execution_market: MarketType;
       pass: boolean;
-      reason: Record<string, any>;
+      signal_status: string; // READY | PENDING
+      leg_type: MarketType;
+      side: Side;
+      line_at_bet: number | null;
+      ref_price: number | null;
+      exec_best_price: number | null;
+      exec_best_book: string | null;
+      recommended_units: number | null;
+      reason_json: Record<string, any>;
     }) {
-      const { error } = await supabase.from("pers_sys_signals").upsert(
+      const { error } = await supabase.from("pers_sys_signals_v2").upsert(
         {
           system_code: args.system_code,
           game_id: args.game_id,
-          snapshot_type: args.snapshot_type,
+          model_snapshot: args.model_snapshot,
+          execution_snapshot: args.execution_snapshot,
+          model_market: args.model_market,
+          execution_market: args.execution_market,
           pass: args.pass,
-          reason: args.reason,
+          signal_status: args.signal_status,
+          leg_type: args.leg_type,
+          side: args.side,
+          line_at_bet: args.line_at_bet,
+          ref_price: args.ref_price,
+          exec_best_price: args.exec_best_price,
+          exec_best_book: args.exec_best_book,
+          recommended_units: args.recommended_units,
+          reason_json: args.reason_json,
+          evaluated_at: new Date().toISOString(),
         },
-        { onConflict: "system_code,game_id,snapshot_type" }
+        { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
       );
+      if (error) console.error("upsert error:", args.system_code, args.game_id, error.message);
       return !error;
     }
 
@@ -909,51 +933,65 @@ Deno.serve(async (req) => {
         }
 
         // -------------------------
-        // READY vs PENDING vs FAIL
+        // READY vs PENDING vs SKIP (don't write FAILs)
         // -------------------------
-        let status: Status = "FAIL";
+        const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
-        if (modelPass) {
-          const primaryLeg = (reason.legs?.[0] ?? null) as any;
-
-          if (!primaryLeg) {
-            status = "FAIL";
-            reason.fail = reason.fail ?? "no_leg_built";
-          } else {
-            const primaryMarket: MarketType = primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
-            const execSnapRow = primaryMarket === "LINE" ? execLine : execH2H;
-
-            const execHas = hasMarketData(execSnapRow, primaryMarket);
-
-            if (execHas) {
-              status = "READY";
-              if (primaryMarket === "H2H") {
-                const side = primaryLeg.side as Side;
-                primaryLeg.exec_best_price = side === "HOME" ? execSnapRow!.exec_best_home_price : execSnapRow!.exec_best_away_price;
-                primaryLeg.exec_best_book = side === "HOME" ? execSnapRow!.exec_best_home_book : execSnapRow!.exec_best_away_book;
-              } else {
-                const side = primaryLeg.side as Side;
-                primaryLeg.exec_best_price = side === "HOME" ? execSnapRow!.exec_best_home_line_price : execSnapRow!.exec_best_away_line_price;
-                primaryLeg.exec_best_book = side === "HOME" ? execSnapRow!.exec_best_home_line_book : execSnapRow!.exec_best_away_line_book;
-              }
-              primaryLeg.exec_snapshot_type = execSnap;
-            } else {
-              status = allowCandidate ? "PENDING" : "FAIL";
-              reason.pending = allowCandidate;
-              reason.pending_reason = allowCandidate ? "await_execution_snapshot" : "execution_snapshot_missing";
-              reason.pending_market = primaryMarket;
-            }
-          }
+        if (!modelPass || !primaryLeg) {
+          // Model failed or no leg — skip writing signal
+          continue;
         }
 
-        reason.status = status;
+        const primaryMarket: MarketType = primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
+        const execSnapRow = primaryMarket === "LINE" ? execLine : execH2H;
+        const execHas = hasMarketData(execSnapRow, primaryMarket);
 
-        const wrote = await upsertSignal({
+        let signalStatus: string = "PENDING";
+        let execBestPrice: number | null = null;
+        let execBestBook: string | null = null;
+        let lineAtBet: number | null = primaryLeg.line_at_bet ?? null;
+
+        if (execHas) {
+          signalStatus = "READY";
+          if (primaryMarket === "H2H") {
+            const side = primaryLeg.side as Side;
+            execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_price : execSnapRow!.exec_best_away_price;
+            execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_book : execSnapRow!.exec_best_away_book;
+          } else {
+            const side = primaryLeg.side as Side;
+            execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_line_price : execSnapRow!.exec_best_away_line_price;
+            execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_line_book : execSnapRow!.exec_best_away_line_book;
+            // For LINE execution, use execution snapshot line if available
+            if (execSnapRow) {
+              const execLineVal = side === "HOME" ? execSnapRow.exec_best_home_line : execSnapRow.exec_best_away_line;
+              if (execLineVal !== null) lineAtBet = execLineVal;
+            }
+          }
+        } else if (!allowCandidate) {
+          // Not allowed to show as PENDING — skip
+          continue;
+        }
+
+        // Enrich reason_json (keep it lean — typed columns hold the primary data)
+        reason.status = signalStatus;
+
+        const wrote = await upsertSignalV2({
           system_code,
           game_id: g.id,
-          snapshot_type: modelSnap,
-          pass: modelPass,
-          reason,
+          model_snapshot: modelSnap,
+          execution_snapshot: execSnap,
+          model_market: sys.primary_market ?? primaryMarket,
+          execution_market: primaryMarket,
+          pass: true,
+          signal_status: signalStatus,
+          leg_type: primaryMarket,
+          side: primaryLeg.side as Side,
+          line_at_bet: lineAtBet,
+          ref_price: primaryLeg.ref_price ?? null,
+          exec_best_price: execBestPrice,
+          exec_best_book: execBestBook,
+          recommended_units: reason.recommended_units ?? null,
+          reason_json: reason,
         });
 
         if (wrote) signalsCreated++;

@@ -146,8 +146,16 @@ Deno.serve(async (req) => {
       string,
       { canonical_name: string; oddsapi_name: string | null }
     > = {};
+
+    function normName(s: string): string {
+      return String(s || "").trim().toLowerCase().replace(/\s+/g, " ").replace(/[^a-z0-9 ]/g, "");
+    }
+
+    const teamIdByNorm = new Map<string, string>();
     for (const t of teams || []) {
       teamById[t.id] = { canonical_name: t.canonical_name, oddsapi_name: t.oddsapi_name };
+      if (t.canonical_name) teamIdByNorm.set(normName(t.canonical_name), t.id);
+      if (t.oddsapi_name) teamIdByNorm.set(normName(t.oddsapi_name), t.id);
     }
 
     const oddsUrl = `https://api.the-odds-api.com/v4/sports/aussierules_afl/odds/?apiKey=${apiKey}&regions=au&markets=h2h,spreads&oddsFormat=decimal`;
@@ -178,21 +186,12 @@ Deno.serve(async (req) => {
       const awayInfo = teamById[game.away_team_id];
       if (!homeInfo || !awayInfo) { skipped_no_team_map++; continue; }
 
-      const homeNames = new Set<string>(
-        [homeInfo.canonical_name, homeInfo.oddsapi_name].filter(Boolean) as string[]
-      );
-      const awayNames = new Set<string>(
-        [awayInfo.canonical_name, awayInfo.oddsapi_name].filter(Boolean) as string[]
-      );
-
       const gameTs = new Date(game.start_time_aet).getTime();
 
       const matchedEvent = oddsEvents.find((ev: any) => {
-        const home = String(ev.home_team || "");
-        const away = String(ev.away_team || "");
-        const homeOk = [...homeNames].some((n) => n.toLowerCase() === home.toLowerCase());
-        const awayOk = [...awayNames].some((n) => n.toLowerCase() === away.toLowerCase());
-        if (!homeOk || !awayOk) return false;
+        const homeId = teamIdByNorm.get(normName(ev.home_team || ""));
+        const awayId = teamIdByNorm.get(normName(ev.away_team || ""));
+        if (homeId !== game.home_team_id || awayId !== game.away_team_id) return false;
         const evTs = new Date(ev.commence_time).getTime();
         if (Number.isNaN(evTs) || Number.isNaN(gameTs)) return false;
         return Math.abs(evTs - gameTs) <= TOL_MS;

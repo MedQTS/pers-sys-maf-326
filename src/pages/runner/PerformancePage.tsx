@@ -15,7 +15,7 @@ export default function PerformancePage() {
     const { data } = await supabase
       .from("pers_sys_bets")
       .select("*")
-      .not("result", "is", null)
+      .eq("status", "SETTLED")
       .order("placed_ts");
     setBets(data || []);
     setLoading(false);

@@ -16,7 +16,7 @@ export default function BetsPage() {
   // Form state
   const [formSystem, setFormSystem] = useState("");
   const [formGame, setFormGame] = useState("");
-  const [formLeg, setFormLeg] = useState("BASE");
+  const [formLeg, setFormLeg] = useState("H2H");
   const [formSide, setFormSide] = useState("HOME");
   const [formPrice, setFormPrice] = useState("");
   const [formUnits, setFormUnits] = useState("1");
@@ -56,6 +56,11 @@ export default function BetsPage() {
       return;
     }
 
+    if (formLeg === "LINE" && !formLine) {
+      toast.error("Line is required for LINE bets");
+      return;
+    }
+
     const { error } = await supabase.from("pers_sys_bets").insert({
       system_code: formSystem,
       game_id: formGame,
@@ -64,7 +69,7 @@ export default function BetsPage() {
       side: formSide,
       price: parseFloat(formPrice),
       units: parseFloat(formUnits),
-      line_at_bet: formLine ? parseFloat(formLine) : null,
+      line_at_bet: formLeg === "LINE" ? parseFloat(formLine) : null,
       notes: formNotes || null,
     });
 
@@ -116,9 +121,8 @@ export default function BetsPage() {
               <Select value={formLeg} onValueChange={setFormLeg}>
                 <SelectTrigger className="font-mono text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BASE">BASE</SelectItem>
-                  <SelectItem value="CLV_PLUS_1">CLV+1</SelectItem>
-                  <SelectItem value="CLV_PLUS_2">CLV+2</SelectItem>
+                  <SelectItem value="H2H">H2H</SelectItem>
+                  <SelectItem value="LINE">LINE</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -127,8 +131,6 @@ export default function BetsPage() {
                 <SelectContent>
                   <SelectItem value="HOME">HOME</SelectItem>
                   <SelectItem value="AWAY">AWAY</SelectItem>
-                  <SelectItem value="HOME_LINE">HOME_LINE</SelectItem>
-                  <SelectItem value="AWAY_LINE">AWAY_LINE</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -145,12 +147,21 @@ export default function BetsPage() {
                 onChange={(e) => setFormUnits(e.target.value)}
                 className="font-mono text-xs"
               />
-              <Input
-                placeholder="Line (opt)"
-                value={formLine}
-                onChange={(e) => setFormLine(e.target.value)}
-                className="font-mono text-xs"
-              />
+              {formLeg === "LINE" ? (
+                <Input
+                  placeholder="Line (e.g. -6.5 or +12.5)"
+                  value={formLine}
+                  onChange={(e) => setFormLine(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              ) : (
+                <Input
+                  placeholder="Line (N/A for H2H)"
+                  value=""
+                  disabled
+                  className="font-mono text-xs"
+                />
+              )}
               <Input
                 placeholder="Notes"
                 value={formNotes}
@@ -179,7 +190,7 @@ export default function BetsPage() {
                   <div className="text-xs font-mono space-y-0.5">
                     <div className="font-semibold">{b.system_code} — {b.leg_type}</div>
                     <div className="text-muted-foreground">
-                      R{g?.round} {home} v {away} — {b.side}
+                      {`R${g?.round} ${home} v ${away} — ${b.leg_type} ${b.side}${b.leg_type === "LINE" && b.line_at_bet !== null && b.line_at_bet !== undefined ? ` ${Number(b.line_at_bet) > 0 ? "+" : ""}${b.line_at_bet}` : ""}`}
                     </div>
                   </div>
                   <div className="text-right text-xs font-mono space-y-0.5">

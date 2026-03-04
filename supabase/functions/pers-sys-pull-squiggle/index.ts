@@ -23,14 +23,34 @@ Deno.serve(async (req) => {
     // Fetch teams for mapping
     const { data: teams } = await supabase
       .from("pers_sys_teams")
-      .select("id, squiggle_team_id");
+      .select("id, squiggle_team_id, squiggle_name");
 
     const teamBySquiggleId: Record<number, string> = {};
+    const teamBySquiggleName: Record<string, string> = {};
+
     for (const t of teams || []) {
       if (t.squiggle_team_id != null) {
         teamBySquiggleId[Number(t.squiggle_team_id)] = t.id;
       }
+      if (t.squiggle_name) {
+        teamBySquiggleName[String(t.squiggle_name).trim().toLowerCase()] = t.id;
+      }
     }
+
+    const resolveTeamId = (x: unknown): string | null => {
+      if (x == null) return null;
+
+      // If it's numeric (or numeric string), try ID map first
+      const asNum = typeof x === "number" ? x : Number(x);
+      if (!Number.isNaN(asNum)) {
+        const hit = teamBySquiggleId[asNum];
+        if (hit) return hit;
+      }
+
+      // Otherwise treat as name
+      const key = String(x).trim().toLowerCase();
+      return teamBySquiggleName[key] ?? null;
+    };
 
     // Pull from Squiggle
     const url = `https://api.squiggle.com.au/?q=games;year=${season}`;
@@ -47,8 +67,9 @@ Deno.serve(async (req) => {
     for (const g of games) {
       const hteam = g.hteam;
       const ateam = g.ateam;
-      const homeTeamId = teamBySquiggleId[Number(hteam)];
-      const awayTeamId = teamBySquiggleId[Number(ateam)];
+
+      const homeTeamId = resolveTeamId(hteam);
+      const awayTeamId = resolveTeamId(ateam);
 
       if (!homeTeamId || !awayTeamId) {
         skipped++;

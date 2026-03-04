@@ -617,32 +617,65 @@ export type Database = {
       pers_sys_signals: {
         Row: {
           created_at: string
+          execution_market: Database["public"]["Enums"]["sys_market"] | null
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"] | null
           game_id: string
           id: string
+          parent_signal_id: string | null
           pass: boolean
           reason: Json
+          recommended_units: number | null
+          signal_status: Database["public"]["Enums"]["sys_signal_status"] | null
           snapshot_type: string
           system_code: string
+          system_priority: number | null
         }
         Insert: {
           created_at?: string
+          execution_market?: Database["public"]["Enums"]["sys_market"] | null
+          execution_snapshot?:
+            | Database["public"]["Enums"]["sys_snapshot"]
+            | null
           game_id: string
           id?: string
+          parent_signal_id?: string | null
           pass: boolean
           reason?: Json
+          recommended_units?: number | null
+          signal_status?:
+            | Database["public"]["Enums"]["sys_signal_status"]
+            | null
           snapshot_type: string
           system_code: string
+          system_priority?: number | null
         }
         Update: {
           created_at?: string
+          execution_market?: Database["public"]["Enums"]["sys_market"] | null
+          execution_snapshot?:
+            | Database["public"]["Enums"]["sys_snapshot"]
+            | null
           game_id?: string
           id?: string
+          parent_signal_id?: string | null
           pass?: boolean
           reason?: Json
+          recommended_units?: number | null
+          signal_status?:
+            | Database["public"]["Enums"]["sys_signal_status"]
+            | null
           snapshot_type?: string
           system_code?: string
+          system_priority?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_signal_parent"
+            columns: ["parent_signal_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_signals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pers_sys_signals_game_id_fkey"
             columns: ["game_id"]
@@ -1758,6 +1791,7 @@ export type Database = {
     Enums: {
       sys_market: "H2H" | "LINE"
       sys_signal_mode: "HARD_FAIL" | "ALLOW_CANDIDATE"
+      sys_signal_status: "READY" | "PENDING"
       sys_snapshot: "OPEN" | "T30" | "T10"
     }
     CompositeTypes: {
@@ -1888,6 +1922,7 @@ export const Constants = {
     Enums: {
       sys_market: ["H2H", "LINE"],
       sys_signal_mode: ["HARD_FAIL", "ALLOW_CANDIDATE"],
+      sys_signal_status: ["READY", "PENDING"],
       sys_snapshot: ["OPEN", "T30", "T10"],
     },
   },

@@ -420,11 +420,15 @@ function GameCard(props: {
             {pendingSignals.slice(0, 6).map((s) => {
               const r = safeJson(s.reason_json) || {};
               const why = r?.fail || r?.status || "pending";
+              const f = formatLegFromRow(s);
+              const price = s.exec_best_price ?? s.ref_price ?? null;
               return (
-                <div key={s.id} className="flex items-center justify-between text-[11px] font-mono">
+                <div key={s.id} className="flex items-center justify-between text-[11px] font-mono opacity-70">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">{s.system_code}</span>
-                    <span className="text-muted-foreground">waiting: {String(why)}</span>
+                    <span className="text-muted-foreground">{f.market} {f.side}{f.line}</span>
+                    {price && <span className="text-muted-foreground">@ {price}</span>}
+                    <span className="text-amber-400">waiting: {why}</span>
                   </div>
                   <span className="text-muted-foreground">{s.execution_snapshot || s.model_snapshot || "—"}</span>
                 </div>

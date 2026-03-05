@@ -430,10 +430,10 @@ function GameCard(props: {
           </div>
         )}
 
-        {showPending && !betPlaced && pendingSignals.length > 0 && (
+        {showPending && pendingSignals.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
             <div className="text-[10px] font-mono text-muted-foreground mb-1">
-              Pending / Maybe (hidden by default)
+              Pending / Maybe (hidden by default){betPlaced ? " — shown even after bet so you can see overlays" : ""}
             </div>
 
             {pendingSignals.slice(0, 6).map((s) => {

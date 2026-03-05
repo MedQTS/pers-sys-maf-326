@@ -995,6 +995,74 @@ Deno.serve(async (req) => {
         });
 
         if (wrote) signalsCreated++;
+
+        // --- Overlay child signal (PENDING) ---------------------------------
+        try {
+          const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
+          const primaryReady = signalStatus === "READY";
+
+          if (overlayEnabled && primaryReady) {
+            const overlayExecSnap = "T30";
+
+            // Check for existing overlay child to avoid duplicates on re-run
+            const { data: existingOverlay, error: exErr } = await supabase
+              .from("pers_sys_signals_v2")
+              .select("id")
+              .eq("system_code", system_code)
+              .eq("game_id", g.id)
+              .eq("execution_snapshot", overlayExecSnap)
+              .eq("leg_type", "H2H")
+              .eq("side", primaryLeg.side)
+              .maybeSingle();
+
+            if (exErr) throw exErr;
+
+            const overlayReason = {
+              ...reason,
+              status: "PENDING",
+              fail: "waiting_overlay_snapshot",
+              overlay_child: {
+                required_execution_snapshot: overlayExecSnap,
+                market: "H2H",
+              },
+            };
+
+            const overlayRow = {
+              system_code,
+              game_id: g.id,
+              model_snapshot: modelSnap,
+              execution_snapshot: overlayExecSnap,
+              model_market: "H2H",
+              execution_market: "H2H",
+              pass: false,
+              signal_status: "PENDING",
+              parent_signal_id: null as string | null,
+              leg_type: "H2H",
+              side: primaryLeg.side,
+              line_at_bet: null,
+              ref_price: null,
+              exec_best_price: null,
+              exec_best_book: null,
+              recommended_units: null,
+              reason_json: overlayReason,
+              evaluated_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+
+            if (existingOverlay?.id) {
+              await supabase
+                .from("pers_sys_signals_v2")
+                .update(overlayRow)
+                .eq("id", existingOverlay.id);
+            } else {
+              await supabase
+                .from("pers_sys_signals_v2")
+                .insert(overlayRow);
+            }
+          }
+        } catch (e) {
+          console.warn("overlay_signal_write_failed", e);
+        }
       }
     }
 

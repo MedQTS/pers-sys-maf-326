@@ -74,7 +74,7 @@ export default function WeekView_v2() {
   const [err, setErr] = useState<any>(null);
   const [unsettledByGame, setUnsettledByGame] = useState<Record<string, boolean>>({});
   const [openBets, setOpenBets] = useState<BetRow[]>([]);
-  const [showPending, setShowPending] = useState(false);
+  const [showPending, setShowPending] = useState(true);
 
   useEffect(() => { loadData(); }, []);
 
@@ -221,7 +221,7 @@ export default function WeekView_v2() {
           </div>
           <div className="flex items-center gap-2">
             <button type="button" className={`text-xs font-mono px-3 py-1.5 rounded-md border transition-colors ${showPending ? "bg-primary/10 text-primary border-primary/30" : "bg-secondary text-muted-foreground border-border"}`} onClick={() => setShowPending((v) => !v)}>
-              Explode: {showPending ? "ON" : "OFF"}
+              Pending: {showPending ? "ON" : "OFF"}
             </button>
             <button type="button" className="text-xs font-mono px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors" onClick={() => loadData()}>
               Refresh

@@ -124,7 +124,7 @@ export default function WeekView_v2() {
         .from("pers_sys_bets")
         .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,placed_ts,created_at")
         .in("game_id", gameIds)
-        .eq("status", "UNSETTLED");
+        .not("status", "in", "(VOID,SETTLED)");
 
       if (betsErr) throw betsErr;
 

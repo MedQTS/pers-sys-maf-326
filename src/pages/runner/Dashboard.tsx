@@ -69,7 +69,7 @@ export default function Dashboard() {
         await Promise.all([
           supabase.from("pers_sys_games").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_team_state").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_signals").select("created_at").order("created_at", { ascending: false }).limit(1).single(),
+          supabase.from("pers_sys_signals_v2").select("created_at").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_bets").select("created_at").eq("status", "SETTLED").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "OPEN").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T60").order("created_at", { ascending: false }).limit(1).single(),

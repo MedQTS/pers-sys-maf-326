@@ -499,6 +499,14 @@ Deno.serve(async (req) => {
       const modelSnap = String(sys.model_snapshot ?? "T10");
       const execSnap = String(sys.execution_snapshot ?? "T30");
 
+      // Rules snapshot policy:
+      // - T10 is treated as bookkeeping-only (close), so evaluate criteria using T30 instead.
+      // - Exception: SYS_7 is explicitly "close-only" by spec, so it may use T10.
+      const rulesSnap =
+        modelSnap === "T10" && system_code !== "SYS_7"
+          ? "T30"
+          : modelSnap;
+
       const allowCandidate = (sys.signal_mode ?? (sys.allow_candidate ? "ALLOW_CANDIDATE" : "HARD_FAIL")) === "ALLOW_CANDIDATE";
 
       for (const game of upcomingGames as any[]) {
@@ -537,8 +545,8 @@ Deno.serve(async (req) => {
 
         const openH2H = pickSnap(gameSnaps, "OPEN", "H2H");
         const openLine = pickSnap(gameSnaps, "OPEN", "LINE");
-        const modelH2H = pickSnap(gameSnaps, modelSnap, "H2H");
-        const modelLine = pickSnap(gameSnaps, modelSnap, "LINE");
+        const modelH2H = pickSnap(gameSnaps, rulesSnap, "H2H");
+        const modelLine = pickSnap(gameSnaps, rulesSnap, "LINE");
         const execH2H = pickSnap(gameSnaps, execSnap, "H2H");
         const execLine = pickSnap(gameSnaps, execSnap, "LINE");
 
@@ -548,6 +556,7 @@ Deno.serve(async (req) => {
           round,
           model_snapshot: modelSnap,
           execution_snapshot: execSnap,
+          rules_snapshot: rulesSnap,
           legs: [] as any[],
           staking_config: sys.staking_config ?? null,
           amplifier_config: sys.amplifier_config ?? null,

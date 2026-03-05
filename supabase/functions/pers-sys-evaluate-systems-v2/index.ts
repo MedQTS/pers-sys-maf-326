@@ -84,8 +84,8 @@ type SystemV2Row = {
   allow_candidate?: boolean | null;
   signal_mode?: "HARD_FAIL" | "ALLOW_CANDIDATE" | null;
 
-  rounds_min?: number | null;
-  rounds_max?: number | null;
+  round_min?: number | null;
+  round_max?: number | null;
   rounds_remaining_min?: number | null;
   rounds_remaining_max?: number | null;
   season_progress_round_min?: number | null;
@@ -481,8 +481,8 @@ Deno.serve(async (req) => {
         if (Array.isArray(sys.exclude_seasons) && sys.exclude_seasons.includes(season)) continue;
 
         // round gates
-        if (typeof sys.rounds_min === "number" && round < sys.rounds_min) continue;
-        if (typeof sys.rounds_max === "number" && round > sys.rounds_max) continue;
+        if (typeof sys.round_min === "number" && round < sys.round_min) continue;
+        if (typeof sys.round_max === "number" && round > sys.round_max) continue;
         if (typeof sys.season_progress_round_min === "number" && round < sys.season_progress_round_min) continue;
 
         // rounds remaining gate

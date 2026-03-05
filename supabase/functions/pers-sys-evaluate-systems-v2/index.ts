@@ -390,38 +390,41 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (seasonMetaErr) throw seasonMetaErr;
 
-    // totalRounds (prefer season meta; fallback to games)
+    // totalRounds (authoritative):
+    // Prefer season config table (computed from games), fall back to MAX(round) from pers_sys_games.
+    // NOTE: upcomingGames is horizon-limited and cannot be used to infer season length.
     let totalRounds = 0;
 
     try {
-      const { data: tr, error: trErr } = await supabase
+      const { data: roundsMeta, error: roundsMetaErr } = await supabase
         .from("pers_sys_season_config")
         .select("total_rounds")
         .eq("season", season)
         .maybeSingle();
 
-      if (trErr) throw trErr;
-      if (tr && typeof (tr as any).total_rounds === "number") totalRounds = (tr as any).total_rounds;
+      if (roundsMetaErr) throw roundsMetaErr;
+
+      if (roundsMeta?.total_rounds && Number(roundsMeta.total_rounds) > 0) {
+        totalRounds = Number(roundsMeta.total_rounds);
+      }
     } catch (_) {
-      // ignore and fallback below
+      // ignore and fall back
     }
 
-    if (!totalRounds || totalRounds <= 0) {
-      const { data: mx, error: mxErr } = await supabase
+    if (!totalRounds) {
+      // Fall back: compute from all season games.
+      const { data: rMax, error: rMaxErr } = await supabase
         .from("pers_sys_games")
         .select("round")
         .eq("season", season)
-        .order("round", { ascending: false })
-        .limit(1);
+        .not("round", "is", null);
 
-      if (!mxErr && mx && mx.length && typeof (mx[0] as any).round === "number") {
-        totalRounds = (mx[0] as any).round;
-      }
-    }
+      if (rMaxErr) throw rMaxErr;
 
-    // final fallback (avoid NaN/zero)
-    if (!totalRounds || totalRounds <= 0) {
-      totalRounds = Math.max(...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0)));
+      totalRounds = Math.max(
+        0,
+        ...((rMax || []) as any[]).map((x: any) => (typeof x.round === "number" ? x.round : 0))
+      );
     }
 
     const stateByGameTeam: Record<string, TeamStateRow> = {};

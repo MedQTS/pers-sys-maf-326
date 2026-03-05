@@ -390,10 +390,39 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (seasonMetaErr) throw seasonMetaErr;
 
-    // totalRounds (best effort)
-    const totalRounds = Math.max(
-      ...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0))
-    );
+    // totalRounds (prefer season meta; fallback to games)
+    let totalRounds = 0;
+
+    try {
+      const { data: tr, error: trErr } = await supabase
+        .from("pers_sys_season_config")
+        .select("total_rounds")
+        .eq("season", season)
+        .maybeSingle();
+
+      if (trErr) throw trErr;
+      if (tr && typeof (tr as any).total_rounds === "number") totalRounds = (tr as any).total_rounds;
+    } catch (_) {
+      // ignore and fallback below
+    }
+
+    if (!totalRounds || totalRounds <= 0) {
+      const { data: mx, error: mxErr } = await supabase
+        .from("pers_sys_games")
+        .select("round")
+        .eq("season", season)
+        .order("round", { ascending: false })
+        .limit(1);
+
+      if (!mxErr && mx && mx.length && typeof (mx[0] as any).round === "number") {
+        totalRounds = (mx[0] as any).round;
+      }
+    }
+
+    // final fallback (avoid NaN/zero)
+    if (!totalRounds || totalRounds <= 0) {
+      totalRounds = Math.max(...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0)));
+    }
 
     const stateByGameTeam: Record<string, TeamStateRow> = {};
     for (const s of (teamStates as any[]) || []) stateByGameTeam[`${s.game_id}_${s.team_id}`] = s;
@@ -481,8 +510,12 @@ Deno.serve(async (req) => {
         if (Array.isArray(sys.exclude_seasons) && sys.exclude_seasons.includes(season)) continue;
 
         // round gates
-        if (typeof sys.round_min === "number" && round < sys.round_min) continue;
-        if (typeof sys.round_max === "number" && round > sys.round_max) continue;
+        const roundMin = (sys as any).round_min;
+        const roundMax = (sys as any).round_max;
+
+        if (typeof roundMin === "number" && round < roundMin) continue;
+        if (typeof roundMax === "number" && round > roundMax) continue;
+
         if (typeof sys.season_progress_round_min === "number" && round < sys.season_progress_round_min) continue;
 
         // rounds remaining gate

@@ -327,8 +327,8 @@ function GameCard(props: {
             {!betPlaced && readySignals.map((s) => (
               <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">{s.system_code}</span>
             ))}
-            {!betPlaced && pendingSignals.length > 0 && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">pending: {pendingSignals.length}</span>
+{showPending && pendingSignals.length > 0 && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">pending: {pendingSignals.length}{betPlaced ? " (after bet)" : ""}</span>
             )}
             <span className="text-xs text-muted-foreground font-mono">
               {date.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}{" "}
@@ -414,7 +414,7 @@ function GameCard(props: {
           </div>
         )}
 
-        {showPending && !betPlaced && pendingSignals.length > 0 && (
+        {showPending && pendingSignals.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
             <div className="text-[10px] font-mono text-muted-foreground mb-1">Pending / Maybe (hidden by default)</div>
             {pendingSignals.slice(0, 6).map((s) => {
@@ -426,7 +426,7 @@ function GameCard(props: {
                     <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">{s.system_code}</span>
                     <span className="text-muted-foreground">waiting: {String(why)}</span>
                   </div>
-                  <span className="text-muted-foreground">{s.model_snapshot || "—"}</span>
+                  <span className="text-muted-foreground">{s.execution_snapshot || s.model_snapshot || "—"}</span>
                 </div>
               );
             })}

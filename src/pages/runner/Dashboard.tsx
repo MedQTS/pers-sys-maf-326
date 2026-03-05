@@ -65,13 +65,14 @@ export default function Dashboard() {
   async function fetchLastRuns() {
     const results: LastRunMap = {};
     try {
-      const [games, features, signals, settledBets, snapOpen, snapT60, snapT30, snapT10] =
+const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, snapT30, snapT10] =
         await Promise.all([
           supabase.from("pers_sys_games").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_team_state").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_signals_v2").select("created_at").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_bets").select("created_at").eq("status", "SETTLED").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "OPEN").order("created_at", { ascending: false }).limit(1).single(),
+          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "CURRENT").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T60").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T30").order("created_at", { ascending: false }).limit(1).single(),
           supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T10").order("created_at", { ascending: false }).limit(1).single(),
@@ -82,6 +83,7 @@ export default function Dashboard() {
       results.evaluate = signals.data?.created_at ?? null;
       results.settle = settledBets.data?.created_at ?? null;
       results.pull_open = snapOpen.data?.created_at ?? null;
+      results.pull_current = snapCurrent.data?.created_at ?? null;
       results.pull_t60 = snapT60.data?.created_at ?? null;
       results.pull_t30 = snapT30.data?.created_at ?? null;
       results.pull_t10 = snapT10.data?.created_at ?? null;
@@ -231,6 +233,16 @@ export default function Dashboard() {
               explainer="Pulls opening odds snapshot and stores market lines/prices."
               whenToRun="Weekly: Sun ~11:00pm (Australia/Melbourne), after Pull Squiggle."
               lastRun={lastRun.pull_open}
+            />
+
+            <StepCard
+              label="Pull CURRENT Snapshot"
+              functionName="pers-sys-pull-odds-snapshot"
+              body={{ snapshot_type: "CURRENT" }}
+              variant="outline"
+              explainer="Pulls the latest odds snapshot for monitoring (UI drift). Safe to rerun."
+              whenToRun="Any time: mid-week monitoring or pre-check before matchday."
+              lastRun={lastRun.pull_current}
             />
 
             <StepCard

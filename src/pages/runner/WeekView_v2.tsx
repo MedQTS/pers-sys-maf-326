@@ -67,6 +67,35 @@ function formatLegFromRow(s: SignalV2Row) {
   return { market, side, line, book, price: price == null ? "—" : String(price) };
 }
 
+function describePendingRule(s: SignalV2Row): string | null {
+  const r = safeJson(s.reason_json) || {};
+  const parts: string[] = [];
+
+  const oc = r?.overlay_child;
+  if (oc?.market) {
+    const need = oc?.required_execution_snapshot ? `requires ${String(oc.required_execution_snapshot)}` : null;
+    parts.push(`Overlay ${String(oc.market)}${need ? ` (${need})` : ""}`);
+  } else if (r?.overlay?.enabled && r?.overlay?.type) {
+    const dep = r?.overlay?.depends_on ? `depends on ${String(r.overlay.depends_on)}` : null;
+    parts.push(`Overlay ${String(r.overlay.type)}${dep ? ` (${dep})` : ""}`);
+  }
+
+  const clvMin = r?.clv_min ?? r?.clv_required_min ?? r?.gates?.clv_min ?? r?.overlay_child?.clv_min ?? null;
+  if (clvMin != null && Number.isFinite(Number(clvMin))) {
+    parts.push(`CLV > ${Number(clvMin)}`);
+  }
+
+  const mkt = s.leg_type || s.execution_market || s.model_market || null;
+  const side = s.side || null;
+  if (mkt || side) parts.push(`Target: ${mkt ?? "?"} ${side ?? "?"}`);
+
+  const fail = r?.fail ? String(r.fail) : null;
+  if (fail) parts.push(`Reason: ${fail}`);
+
+  if (parts.length === 0) return null;
+  return parts.join(" · ");
+}
+
 function pendingHintFromRow(s: SignalV2Row) {
   const r = safeJson(s.reason_json) || {};
   const needSnap =
@@ -463,7 +492,7 @@ function GameCard(props: {
                     )}
 
                     <span className="text-muted-foreground">
-                      ({hint.why})
+                      {describePendingRule(s) ?? `(${hint.why})`}
                     </span>
                   </div>
 

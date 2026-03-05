@@ -1,28 +1,39 @@
 
 
-## Plan: Fix Supabase client boot with env-var fallbacks
+## Root Cause
 
-### Root Cause
-`.env` was deleted and gitignored. `import.meta.env.VITE_SUPABASE_URL` is undefined, so `createClient()` throws at boot.
+All 207 scheduled games for season 2026 have `round = 0`. In the evaluator at line 455:
 
-### Changes
+```javascript
+if (!round) continue;
+```
 
-**1. `src/integrations/supabase/client.ts`**
-- Add `getEnv()` helper with fallback chain
-- URL: `VITE_SUPABASE_URL` → `SUPABASE_URL`
-- Key: `VITE_SUPABASE_PUBLISHABLE_KEY` → `VITE_SUPABASE_ANON_KEY` → `SUPABASE_ANON_KEY`
-- Hard fail with descriptive error if missing
-- Optional: guard `localStorage` with `globalThis.localStorage` check
+Since `!0` is `true` in JavaScript, **every single game is skipped** before any system rules run. This is why `signals_created: 0`.
 
-**2. `src/lib/api.ts`**
-- Use same `getEnv()` fallback chain (not `(supabase as any).supabaseUrl`)
-- Add `Authorization: Bearer <anon>` and `Accept: application/json` headers
-- Handle non-2xx responses with `throw new Error(...)` instead of silent `resp.json()`
-- Use exact code pattern provided by user
+## Fix
 
-### Constraints enforced
-- Zero hardcoded keys/URLs
-- Fallbacks = alternative env var names only
-- Hard fail with clear error if all miss
-- `VITE_SUPABASE_PROJECT_ID` eliminated
+Change the round guard in `supabase/functions/pers-sys-evaluate-systems-v2/index.ts` line 455 from:
+
+```javascript
+if (!round) continue;
+```
+
+to:
+
+```javascript
+if (round === null || round === undefined) continue;
+```
+
+This allows round 0 (which likely represents pre-season / opening round games) to be processed, while still skipping games that genuinely have no round assigned.
+
+## Secondary Issue
+
+`totalRounds` (line 371-373) will also be `0` since all games are round 0, which means the "rounds remaining" gate calculation (`totalRounds - round + 1 = 1`) may not behave as expected. However, since no system currently has `rounds_remaining_min` set (only SYS_1 has `rounds_remaining_min: 3` and SYS_4 has `rounds_remaining_max: 3`), those will simply gate out as expected. This is a data issue (rounds not yet populated) rather than a code bug.
+
+## Plan
+
+1. **Fix the falsy-zero guard** in the edge function (line 455) to use strict null check
+2. **Redeploy** the edge function
+
+Single-line change, no other files affected.
 

@@ -1,39 +1,19 @@
 
 
-## Root Cause
+## Plan: Replace Overlay Block with Full SYS_2 Spec
 
-All 207 scheduled games for season 2026 have `round = 0`. In the evaluator at line 455:
+### What changes
+**File**: `supabase/functions/pers-sys-evaluate-systems-v2/index.ts` (lines 1084-1168)
 
-```javascript
-if (!round) continue;
-```
+Replace the entire overlay section with the provided block, which adds:
 
-Since `!0` is `true` in JavaScript, **every single game is skipped** before any system rules run. This is why `signals_created: 0`.
+1. **Stale row cleanup**: When OPEN or T30 snapshots are missing, or when CLV does not pass the threshold, any prior overlay row for that game/system is explicitly deleted
+2. **PENDING support**: If CLV passes but T30 market data is incomplete (`hasMarketData` returns false), the overlay is written as PENDING with `fail: "waiting_overlay_snapshot"`
+3. **Richer reason_json**: Includes `overlay.depends_on`, `overlay_child.clv_rel`, `overlay_child.clv_min`, and `overlay_child.side`
+4. **Upsert pattern**: Uses `.upsert()` with `onConflict: "system_code,game_id,execution_snapshot,leg_type,side"` instead of manual select+insert/update
 
-## Fix
-
-Change the round guard in `supabase/functions/pers-sys-evaluate-systems-v2/index.ts` line 455 from:
-
-```javascript
-if (!round) continue;
-```
-
-to:
-
-```javascript
-if (round === null || round === undefined) continue;
-```
-
-This allows round 0 (which likely represents pre-season / opening round games) to be processed, while still skipping games that genuinely have no round assigned.
-
-## Secondary Issue
-
-`totalRounds` (line 371-373) will also be `0` since all games are round 0, which means the "rounds remaining" gate calculation (`totalRounds - round + 1 = 1`) may not behave as expected. However, since no system currently has `rounds_remaining_min` set (only SYS_1 has `rounds_remaining_min: 3` and SYS_4 has `rounds_remaining_max: 3`), those will simply gate out as expected. This is a data issue (rounds not yet populated) rather than a code bug.
-
-## Plan
-
-1. **Fix the falsy-zero guard** in the edge function (line 455) to use strict null check
-2. **Redeploy** the edge function
-
-Single-line change, no other files affected.
+### Technical detail
+- Lines 1084-1168 are replaced wholesale
+- No other lines in the file change
+- Edge function will be redeployed after edit
 

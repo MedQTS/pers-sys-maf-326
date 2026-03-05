@@ -8,7 +8,7 @@ const corsHeaders = {
 
 type MarketType = "H2H" | "LINE";
 type Side = "HOME" | "AWAY";
-type Status = "READY" | "PENDING" | "FAIL";
+type Status = "READY" | "PENDING" | "FAIL" | "BLOCKED";
 
 type SnapshotRow = {
   game_id: string;
@@ -317,6 +317,29 @@ Deno.serve(async (req) => {
 
     if (systemsErr) throw systemsErr;
 
+    // system priority (cascade)
+    const { data: pri, error: priErr } = await supabase
+      .from("pers_sys_system_priority")
+      .select("system_code, rank, dominates_match, allow_stack, max_exposure_pct, tie_break");
+
+    if (priErr) throw priErr;
+
+    const priByCode = new Map<string, any>();
+    for (const p of (pri || []) as any[]) priByCode.set(p.system_code, p);
+
+    const systemsSorted = [...(systems || [])].sort((a: any, b: any) => {
+      const ra = Number(priByCode.get(a.system_code)?.rank ?? 999);
+      const rb = Number(priByCode.get(b.system_code)?.rank ?? 999);
+      return ra - rb;
+    });
+
+    const dominatesByCode = new Set<string>(
+      ((pri || []) as any[]).filter((p) => !!p.dominates_match).map((p) => p.system_code)
+    );
+
+    // per-game dominance latch (filled as we evaluate)
+    const dominatedByGame: Record<string, string> = {};
+
     // upcoming games
     const { data: upcomingGames, error: gamesErr } = await supabase
       .from("pers_sys_games")
@@ -440,7 +463,7 @@ Deno.serve(async (req) => {
 
     let signalsCreated = 0;
 
-    for (const sysRaw of systems as any[]) {
+    for (const sysRaw of systemsSorted as any[]) {
       const sys = sysRaw as SystemV2Row;
       const system_code = String(sys.system_code);
 
@@ -972,6 +995,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // dominance: if a dominating system already qualified on this match, block others
+        const blocker = dominatedByGame[g.id];
+        if (blocker && blocker !== system_code) {
+          signalStatus = "BLOCKED";
+          reason.fail = `blocked_by_${blocker}`;
+          reason.blocked_by = blocker;
+
+          // execution fields should not be actionable when blocked
+          execBestBook = null;
+          execBestPrice = null;
+        }
+
         // Enrich reason_json (keep it lean — typed columns hold the primary data)
         reason.status = signalStatus;
 
@@ -982,7 +1017,7 @@ Deno.serve(async (req) => {
           execution_snapshot: execSnap,
           model_market: sys.primary_market ?? primaryMarket,
           execution_market: primaryMarket,
-          pass: true,
+          pass: signalStatus !== "BLOCKED",
           signal_status: signalStatus,
           leg_type: primaryMarket,
           side: primaryLeg.side as Side,
@@ -996,8 +1031,13 @@ Deno.serve(async (req) => {
 
         if (wrote) signalsCreated++;
 
+        // latch dominance for this game if applicable
+        if (signalStatus === "READY" && dominatesByCode.has(system_code) && !dominatedByGame[g.id]) {
+          dominatedByGame[g.id] = system_code;
+        }
+
         // --- Overlay child signal (PENDING) ---------------------------------
-        try {
+        if (signalStatus !== "BLOCKED") try {
           const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
           const primaryReady = signalStatus === "READY";
 

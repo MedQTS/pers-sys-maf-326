@@ -582,6 +582,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_season_config: {
+        Row: {
+          computed_at: string
+          season: number
+          source: string
+          total_rounds: number
+          updated_at: string
+        }
+        Insert: {
+          computed_at?: string
+          season: number
+          source?: string
+          total_rounds: number
+          updated_at?: string
+        }
+        Update: {
+          computed_at?: string
+          season?: number
+          source?: string
+          total_rounds?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pers_sys_season_meta: {
         Row: {
           created_at: string
@@ -613,6 +637,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pers_sys_signal_audit_v2: {
+        Row: {
+          audit_key: string
+          audit_status: Database["public"]["Enums"]["sys_signal_status"]
+          created_at: string
+          evaluated_at: string
+          exec_best_book: string | null
+          exec_best_price: number | null
+          execution_market: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          fail_code: string | null
+          fail_stage: Database["public"]["Enums"]["sys_fail_stage"] | null
+          game_id: string
+          id: string
+          leg_type: Database["public"]["Enums"]["sys_leg_type"] | null
+          line_at_bet: number | null
+          model_market: Database["public"]["Enums"]["sys_market"]
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          reason_json: Json
+          recommended_units: number | null
+          ref_price: number | null
+          round: number | null
+          season: number
+          side: Database["public"]["Enums"]["sys_side"] | null
+          system_code: string
+          updated_at: string
+        }
+        Insert: {
+          audit_key: string
+          audit_status: Database["public"]["Enums"]["sys_signal_status"]
+          created_at?: string
+          evaluated_at?: string
+          exec_best_book?: string | null
+          exec_best_price?: number | null
+          execution_market: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          fail_code?: string | null
+          fail_stage?: Database["public"]["Enums"]["sys_fail_stage"] | null
+          game_id: string
+          id?: string
+          leg_type?: Database["public"]["Enums"]["sys_leg_type"] | null
+          line_at_bet?: number | null
+          model_market: Database["public"]["Enums"]["sys_market"]
+          model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
+          reason_json?: Json
+          recommended_units?: number | null
+          ref_price?: number | null
+          round?: number | null
+          season: number
+          side?: Database["public"]["Enums"]["sys_side"] | null
+          system_code: string
+          updated_at?: string
+        }
+        Update: {
+          audit_key?: string
+          audit_status?: Database["public"]["Enums"]["sys_signal_status"]
+          created_at?: string
+          evaluated_at?: string
+          exec_best_book?: string | null
+          exec_best_price?: number | null
+          execution_market?: Database["public"]["Enums"]["sys_market"]
+          execution_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          fail_code?: string | null
+          fail_stage?: Database["public"]["Enums"]["sys_fail_stage"] | null
+          game_id?: string
+          id?: string
+          leg_type?: Database["public"]["Enums"]["sys_leg_type"] | null
+          line_at_bet?: number | null
+          model_market?: Database["public"]["Enums"]["sys_market"]
+          model_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
+          reason_json?: Json
+          recommended_units?: number | null
+          ref_price?: number | null
+          round?: number | null
+          season?: number
+          side?: Database["public"]["Enums"]["sys_side"] | null
+          system_code?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       pers_sys_signals: {
         Row: {
@@ -1927,6 +2032,7 @@ export type Database = {
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
     }
     Enums: {
+      sys_fail_stage: "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM"
       sys_leg_type: "H2H" | "LINE"
       sys_market: "H2H" | "LINE"
       sys_side: "HOME" | "AWAY"
@@ -2060,6 +2166,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      sys_fail_stage: ["GATE", "DATA", "MODEL", "EXEC", "OVERLAY", "SYSTEM"],
       sys_leg_type: ["H2H", "LINE"],
       sys_market: ["H2H", "LINE"],
       sys_side: ["HOME", "AWAY"],

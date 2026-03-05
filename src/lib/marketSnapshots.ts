@@ -34,9 +34,8 @@ export type MarketSnapshot = {
 /**
  * Returns OPEN and CURRENT snapshot rows for a given market type.
  *
- * OPEN = first snapshot with snapshot_type === "OPEN"
- * CURRENT = most recent snapshot by snapshot_ts
- *           excluding OPEN when newer snapshots exist
+ * OPEN    = first snapshot with snapshot_type === "OPEN"
+ * CURRENT = priority: explicit "CURRENT" snapshot → latest evaluator (T10/T30/T60) → OPEN fallback
  */
 export function getMarketSnapshots(
   snapshots: MarketSnapshot[],
@@ -61,10 +60,14 @@ export function getMarketSnapshots(
     return tb - ta;
   });
 
-  const current =
-    sorted.find((s) => s.snapshot_type !== "OPEN") ??
-    sorted[0] ??
-    null;
+  const explicitCurrent = sorted.find((s) => s.snapshot_type === "CURRENT") ?? null;
+
+  const latestEvaluator =
+    sorted.find(
+      (s) => s.snapshot_type === "T10" || s.snapshot_type === "T30" || s.snapshot_type === "T60"
+    ) ?? null;
+
+  const current = explicitCurrent ?? latestEvaluator ?? open ?? null;
 
   return { open, current };
 }

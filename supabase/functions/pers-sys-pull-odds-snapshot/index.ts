@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const rawSnapshotType = String(body.snapshot_type || "OPEN").toUpperCase();
-    const allowedSnapshotTypes = new Set(["OPEN", "T60", "T30", "T10"]);
+    const allowedSnapshotTypes = new Set(["OPEN", "T60", "T30", "T10", "CURRENT"]);
     if (!allowedSnapshotTypes.has(rawSnapshotType)) {
       return new Response(
         JSON.stringify({
@@ -96,11 +96,12 @@ Deno.serve(async (req) => {
         }
       );
     }
-    const snapshotType: "OPEN" | "T60" | "T30" | "T10" = rawSnapshotType as
+    const snapshotType: "OPEN" | "T60" | "T30" | "T10" | "CURRENT" = rawSnapshotType as
       | "OPEN"
       | "T60"
       | "T30"
-      | "T10";
+      | "T10"
+      | "CURRENT";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -197,6 +198,22 @@ Deno.serve(async (req) => {
     }
 
     const snapshotTs = now.toISOString();
+
+    const SNAPSHOT_CONFLICT = "game_id,snapshot_type,market_type,agg_method";
+
+    async function writeSnapshot(row: Record<string, unknown>) {
+      if (snapshotType === "OPEN") {
+        // OPEN is immutable: write once; if it already exists, do nothing.
+        return await supabase
+          .from("pers_sys_market_snapshots")
+          .insert(row as any, { onConflict: SNAPSHOT_CONFLICT, ignoreDuplicates: true } as any);
+      }
+      // Evaluator snapshots (T60/T30/T10) + monitoring snapshot (CURRENT) can upsert safely.
+      return await supabase
+        .from("pers_sys_market_snapshots")
+        .upsert(row as any, { onConflict: SNAPSHOT_CONFLICT });
+    }
+
     let snapshotsStored = 0;
     const observedBookKeys = new Set<string>();
     const usedReferenceKeys = new Set<string>();
@@ -373,25 +390,22 @@ Deno.serve(async (req) => {
         homeH2hMedian > 0 &&
         awayH2hMedian > 0
       ) {
-        const { error } = await supabase.from("pers_sys_market_snapshots").upsert(
-          {
-            game_id: game.id,
-            snapshot_type: snapshotType,
-            market_type: "H2H",
-            agg_method: "median",
-            books_used: Array.from(refH2hBooks),
-            ref_books_observed: Array.from(refH2hBooks),
-            exec_books_observed: Array.from(execH2hBooks),
-            home_price: Number(homeH2hMedian.toFixed(3)),
-            away_price: Number(awayH2hMedian.toFixed(3)),
-            exec_best_home_price: execBestHomePrice,
-            exec_best_home_book: execBestHomeBook,
-            exec_best_away_price: execBestAwayPrice,
-            exec_best_away_book: execBestAwayBook,
-            snapshot_ts: snapshotTs,
-          },
-          { onConflict: "game_id,snapshot_type,market_type,agg_method" }
-        );
+        const { error } = await writeSnapshot({
+          game_id: game.id,
+          snapshot_type: snapshotType,
+          market_type: "H2H",
+          agg_method: "median",
+          books_used: Array.from(refH2hBooks),
+          ref_books_observed: Array.from(refH2hBooks),
+          exec_books_observed: Array.from(execH2hBooks),
+          home_price: Number(homeH2hMedian.toFixed(3)),
+          away_price: Number(awayH2hMedian.toFixed(3)),
+          exec_best_home_price: execBestHomePrice,
+          exec_best_home_book: execBestHomeBook,
+          exec_best_away_price: execBestAwayPrice,
+          exec_best_away_book: execBestAwayBook,
+          snapshot_ts: snapshotTs,
+        });
         if (!error) snapshotsStored += 1;
       } else {
         skipped_no_ref_h2h++;
@@ -410,29 +424,26 @@ Deno.serve(async (req) => {
         const bestHomeLine = pickBestLineAtAnchor(execHomeLineCandidates, Number.isFinite(refHomeLineMed) ? refHomeLineMed : null);
         const bestAwayLine = pickBestLineAtAnchor(execAwayLineCandidates, Number.isFinite(refAwayLineMed) ? refAwayLineMed : null);
 
-        const { error } = await supabase.from("pers_sys_market_snapshots").upsert(
-          {
-            game_id: game.id,
-            snapshot_type: snapshotType,
-            market_type: "LINE",
-            agg_method: "median",
-            books_used: Array.from(refLineBooks),
-            ref_books_observed: Array.from(refLineBooks),
-            exec_books_observed: Array.from(execLineBooks),
-            home_line: Number(refHomeLineMed.toFixed(3)),
-            away_line: Number(refAwayLineMed.toFixed(3)),
-            home_line_price: Number(median(refHomeLinePrices).toFixed(3)),
-            away_line_price: Number(median(refAwayLinePrices).toFixed(3)),
-            exec_best_home_line: bestHomeLine ? bestHomeLine.point : null,
-            exec_best_home_line_price: bestHomeLine ? bestHomeLine.price : null,
-            exec_best_home_line_book: bestHomeLine ? bestHomeLine.book : null,
-            exec_best_away_line: bestAwayLine ? bestAwayLine.point : null,
-            exec_best_away_line_price: bestAwayLine ? bestAwayLine.price : null,
-            exec_best_away_line_book: bestAwayLine ? bestAwayLine.book : null,
-            snapshot_ts: snapshotTs,
-          },
-          { onConflict: "game_id,snapshot_type,market_type,agg_method" }
-        );
+        const { error } = await writeSnapshot({
+          game_id: game.id,
+          snapshot_type: snapshotType,
+          market_type: "LINE",
+          agg_method: "median",
+          books_used: Array.from(refLineBooks),
+          ref_books_observed: Array.from(refLineBooks),
+          exec_books_observed: Array.from(execLineBooks),
+          home_line: Number(refHomeLineMed.toFixed(3)),
+          away_line: Number(refAwayLineMed.toFixed(3)),
+          home_line_price: Number(median(refHomeLinePrices).toFixed(3)),
+          away_line_price: Number(median(refAwayLinePrices).toFixed(3)),
+          exec_best_home_line: bestHomeLine ? bestHomeLine.point : null,
+          exec_best_home_line_price: bestHomeLine ? bestHomeLine.price : null,
+          exec_best_home_line_book: bestHomeLine ? bestHomeLine.book : null,
+          exec_best_away_line: bestAwayLine ? bestAwayLine.point : null,
+          exec_best_away_line_price: bestAwayLine ? bestAwayLine.price : null,
+          exec_best_away_line_book: bestAwayLine ? bestAwayLine.book : null,
+          snapshot_ts: snapshotTs,
+        });
         if (!error) snapshotsStored += 1;
       } else {
         skipped_no_ref_line++;

@@ -67,6 +67,22 @@ function formatLegFromRow(s: SignalV2Row) {
   return { market, side, line, book, price: price == null ? "—" : String(price) };
 }
 
+function pendingHintFromRow(s: SignalV2Row) {
+  const r = safeJson(s.reason_json) || {};
+  const needSnap =
+    r?.overlay_child?.required_execution_snapshot ||
+    r?.overlay?.depends_on ||
+    s.execution_snapshot ||
+    null;
+
+  const why = r?.fail || r?.status || s.signal_status || "PENDING";
+
+  return {
+    needSnap: needSnap ? String(needSnap) : null,
+    why: String(why),
+  };
+}
+
 export default function WeekView_v2() {
   const [games, setGames] = useState<any[]>([]);
   const [signalsAll, setSignalsAll] = useState<SignalV2Row[]>([]);
@@ -414,28 +430,54 @@ function GameCard(props: {
           </div>
         )}
 
-        {showPending && pendingSignals.length > 0 && (
+        {showPending && !betPlaced && pendingSignals.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-            <div className="text-[10px] font-mono text-muted-foreground mb-1">Pending / Maybe (hidden by default)</div>
+            <div className="text-[10px] font-mono text-muted-foreground mb-1">
+              Pending / Maybe (hidden by default)
+            </div>
+
             {pendingSignals.slice(0, 6).map((s) => {
-              const r = safeJson(s.reason_json) || {};
-              const why = r?.fail || r?.status || "pending";
               const f = formatLegFromRow(s);
-              const price = s.exec_best_price ?? s.ref_price ?? null;
+              const hint = pendingHintFromRow(s);
+
               return (
-                <div key={s.id} className="flex items-center justify-between text-[11px] font-mono opacity-70">
+                <div key={s.id} className="flex items-center justify-between gap-3 text-[11px] font-mono opacity-90">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">{s.system_code}</span>
-                    <span className="text-muted-foreground">{f.market} {f.side}{f.line}</span>
-                    {price && <span className="text-muted-foreground">@ {price}</span>}
-                    <span className="text-amber-400">waiting: {why}</span>
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500">
+                      {s.system_code}
+                    </span>
+
+                    <span className="text-muted-foreground">
+                      {f.market} {f.side}
+                      {f.line}
+                    </span>
+
+                    <span className="text-muted-foreground">
+                      exec: {f.book} @ {f.price}
+                    </span>
+
+                    {hint.needSnap && (
+                      <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                        needs {hint.needSnap}
+                      </span>
+                    )}
+
+                    <span className="text-muted-foreground">
+                      ({hint.why})
+                    </span>
                   </div>
-                  <span className="text-muted-foreground">{s.execution_snapshot || s.model_snapshot || "—"}</span>
+
+                  <span className="text-muted-foreground">
+                    {s.model_snapshot || "—"}
+                  </span>
                 </div>
               );
             })}
+
             {pendingSignals.length > 6 && (
-              <div className="text-[10px] font-mono text-muted-foreground">+{pendingSignals.length - 6} more pending…</div>
+              <div className="text-[10px] font-mono text-muted-foreground">
+                +{pendingSignals.length - 6} more pending…
+              </div>
             )}
           </div>
         )}

@@ -31,8 +31,8 @@ export default function GameDetail() {
         .single(),
       supabase.from("pers_sys_team_state").select("*, team:pers_sys_teams(canonical_name)").eq("game_id", gameId),
       supabase.from("pers_sys_market_snapshots").select("*").eq("game_id", gameId),
-      supabase.from("pers_sys_signals").select("*").eq("game_id", gameId),
-      supabase.from("pers_sys_bets").select("*").eq("game_id", gameId),
+      supabase.from("pers_sys_signals_v2").select("*").eq("game_id", gameId),
+      supabase.from("pers_sys_bets").select("*").eq("game_id", gameId).neq("status", "VOID"),
     ]);
 
     setGame(gameRes.data);
@@ -180,7 +180,7 @@ export default function GameDetail() {
                     </span>
                   </div>
                   <pre className="text-[10px] font-mono text-muted-foreground whitespace-pre-wrap max-h-40 overflow-auto">
-                    {JSON.stringify(s.reason, null, 2)}
+                    {JSON.stringify(s.reason_json ?? s.reason, null, 2)}
                   </pre>
                 </div>
               ))}

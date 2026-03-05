@@ -786,6 +786,50 @@ export type Database = {
           },
         ]
       }
+      pers_sys_system_priority: {
+        Row: {
+          allow_stack: boolean
+          created_at: string
+          dominates_match: boolean
+          id: string
+          max_exposure_pct: number | null
+          rank: number
+          system_code: string
+          tie_break: Json
+          updated_at: string
+        }
+        Insert: {
+          allow_stack?: boolean
+          created_at?: string
+          dominates_match?: boolean
+          id?: string
+          max_exposure_pct?: number | null
+          rank: number
+          system_code: string
+          tie_break?: Json
+          updated_at?: string
+        }
+        Update: {
+          allow_stack?: boolean
+          created_at?: string
+          dominates_match?: boolean
+          id?: string
+          max_exposure_pct?: number | null
+          rank?: number
+          system_code?: string
+          tie_break?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_system_priority_system_code_fk"
+            columns: ["system_code"]
+            isOneToOne: true
+            referencedRelation: "pers_sys_systems"
+            referencedColumns: ["system_code"]
+          },
+        ]
+      }
       pers_sys_systems: {
         Row: {
           active: boolean

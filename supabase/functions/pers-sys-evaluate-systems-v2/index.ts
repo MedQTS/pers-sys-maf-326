@@ -1081,72 +1081,90 @@ Deno.serve(async (req) => {
           dominatedByGame[g.id] = system_code;
         }
 
-        // --- Overlay child signal (PENDING) ---------------------------------
-        if (signalStatus !== "BLOCKED") try {
-          const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
-          const primaryReady = signalStatus === "READY";
+        // --- Overlay child signal (SYS_2 only; conditional AWAY CLV OPEN->T30) ----
+        if (signalStatus !== "BLOCKED") {
+          try {
+            const isSys2 = system_code === "SYS_2";
+            const overlayEnabled = isSys2 && !!reason?.overlay_config?.overlay_h2h;
+            const primaryReady = signalStatus === "READY";
 
-          if (overlayEnabled && primaryReady) {
-            const overlayExecSnap = "T30";
+            if (overlayEnabled && primaryReady) {
+              const overlayExecSnap: "T30" = "T30";
 
-            // Check for existing overlay child to avoid duplicates on re-run
-            const { data: existingOverlay, error: exErr } = await supabase
-              .from("pers_sys_signals_v2")
-              .select("id")
-              .eq("system_code", system_code)
-              .eq("game_id", g.id)
-              .eq("execution_snapshot", overlayExecSnap)
-              .eq("leg_type", "H2H")
-              .eq("side", primaryLeg.side)
-              .maybeSingle();
+              // Need OPEN and T30 H2H to compute CLV for AWAY
+              const openH2H_forOverlay = openH2H;
+              const t30H2H_forOverlay = pickSnap(gameSnaps, overlayExecSnap, "H2H");
 
-            if (exErr) throw exErr;
+              if (openH2H_forOverlay && t30H2H_forOverlay) {
+                const openAway = openH2H_forOverlay.away_price;
+                const t30Away = t30H2H_forOverlay.away_price;
 
-            const overlayReason = {
-              ...reason,
-              status: "PENDING",
-              fail: "waiting_overlay_snapshot",
-              overlay_child: {
-                required_execution_snapshot: overlayExecSnap,
-                market: "H2H",
-              },
-            };
+                if (openAway && t30Away) {
+                  const overlayClv = relCLV(openAway, t30Away);
+                  const minOverlayClv = 0.03;
 
-            const overlayRow = {
-              system_code,
-              game_id: g.id,
-              model_snapshot: modelSnap,
-              execution_snapshot: overlayExecSnap,
-              model_market: "H2H",
-              execution_market: "H2H",
-              pass: false,
-              signal_status: "PENDING",
-              parent_signal_id: null as string | null,
-              leg_type: "H2H",
-              side: primaryLeg.side,
-              line_at_bet: null,
-              ref_price: null,
-              exec_best_price: null,
-              exec_best_book: null,
-              recommended_units: null,
-              reason_json: overlayReason,
-              evaluated_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
+                  if (overlayClv > minOverlayClv) {
+                    const execBestPrice = t30H2H_forOverlay.exec_best_away_price ?? null;
+                    const execBestBook = t30H2H_forOverlay.exec_best_away_book ?? null;
 
-            if (existingOverlay?.id) {
-              await supabase
-                .from("pers_sys_signals_v2")
-                .update(overlayRow)
-                .eq("id", existingOverlay.id);
-            } else {
-              await supabase
-                .from("pers_sys_signals_v2")
-                .insert(overlayRow);
+                    const overlayReason = {
+                      ...reason,
+                      status: "READY",
+                      overlay_child: {
+                        market: "H2H",
+                        required_execution_snapshot: overlayExecSnap,
+                        side: "AWAY",
+                        clv_open_to_t30: Number(overlayClv.toFixed(4)),
+                        clv_min: minOverlayClv,
+                      },
+                    };
+
+                    const overlayRow = {
+                      system_code,
+                      game_id: g.id,
+                      model_snapshot: modelSnap,
+                      execution_snapshot: overlayExecSnap,
+                      model_market: "H2H",
+                      execution_market: "H2H",
+                      pass: true,
+                      signal_status: "READY",
+                      parent_signal_id: null as string | null,
+                      leg_type: "H2H",
+                      side: "AWAY" as Side,
+                      line_at_bet: null,
+                      ref_price: t30Away,
+                      exec_best_price: execBestPrice,
+                      exec_best_book: execBestBook,
+                      recommended_units: null,
+                      reason_json: overlayReason,
+                      evaluated_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    };
+
+                    const { data: existingOverlay, error: exErr } = await supabase
+                      .from("pers_sys_signals_v2")
+                      .select("id")
+                      .eq("system_code", system_code)
+                      .eq("game_id", g.id)
+                      .eq("execution_snapshot", overlayExecSnap)
+                      .eq("leg_type", "H2H")
+                      .eq("side", "AWAY")
+                      .maybeSingle();
+
+                    if (exErr) throw exErr;
+
+                    if (existingOverlay?.id) {
+                      await supabase.from("pers_sys_signals_v2").update(overlayRow).eq("id", existingOverlay.id);
+                    } else {
+                      await supabase.from("pers_sys_signals_v2").insert(overlayRow);
+                    }
+                  }
+                }
+              }
             }
+          } catch (e) {
+            console.warn("overlay_signal_write_failed", e);
           }
-        } catch (e) {
-          console.warn("overlay_signal_write_failed", e);
         }
       }
     }

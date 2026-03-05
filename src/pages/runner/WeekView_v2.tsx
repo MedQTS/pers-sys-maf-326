@@ -47,6 +47,13 @@ function fmtLine(n: number | null) {
   return `${n > 0 ? "+" : ""}${n}`;
 }
 
+function formatRoundLabel(round: any) {
+  const n = Number(round);
+  if (Number.isFinite(n) && n === 0) return "OR"; // AFL Opening Round
+  if (Number.isFinite(n)) return `R${n}`;
+  return "R?";
+}
+
 function formatLegFromRow(s: SignalV2Row) {
   const market = s.leg_type || s.execution_market || s.model_market || "?";
   const side = s.side || "?";
@@ -343,7 +350,7 @@ function GameCard(props: {
       <div className={`runner-card ${borderClass}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="text-xs text-muted-foreground font-mono w-16">R{game.round}</div>
+            <div className="text-xs text-muted-foreground font-mono w-16">{formatRoundLabel(game.round)}</div>
             <div className="font-medium text-sm">
               {homeTeam} <span className="text-muted-foreground mx-1">v</span> {awayTeam}
             </div>

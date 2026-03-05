@@ -27,11 +27,16 @@ type SignalV2Row = {
 type BetRow = {
   id: string;
   game_id: string;
-  status: string | null;
+  system_code: string;
+  leg_type: string | null;
+  side: string | null;
+  line_at_bet: number | null;
+  price: number | null;
+  book: string | null;
   stake_amount: number | null;
   units: number | null;
-  book: string | null;
-  price: number | null;
+  status: string | null;
+  placed_ts: string | null;
   created_at: string;
 };
 
@@ -58,7 +63,7 @@ function formatLegFromRow(s: SignalV2Row) {
   const side = s.side || "?";
   const line = market === "LINE" ? fmtLine(s.line_at_bet ?? null) : "";
   const book = s.exec_best_book || "—";
-  const price = s.exec_best_price ?? null;
+  const price = s.exec_best_price ?? s.ref_price ?? null;
   return { market, side, line, book, price: price == null ? "—" : String(price) };
 }
 
@@ -68,7 +73,7 @@ export default function WeekView_v2() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<any>(null);
   const [unsettledByGame, setUnsettledByGame] = useState<Record<string, boolean>>({});
-  const [betByGame, setBetByGame] = useState<Record<string, BetRow>>({});
+  const [openBets, setOpenBets] = useState<BetRow[]>([]);
   const [showPending, setShowPending] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -100,7 +105,7 @@ export default function WeekView_v2() {
       if (!gamesData || gamesData.length === 0) {
         setSignalsAll([]);
         setUnsettledByGame({});
-        setBetByGame({});
+        setOpenBets([]);
         setLoading(false);
         return;
       }
@@ -115,22 +120,22 @@ export default function WeekView_v2() {
       if (sigErr) throw sigErr;
       setSignalsAll((sigs as any) || []);
 
-      const { data: openBets, error: openBetsErr } = await supabase
+      const { data: betsData, error: betsErr } = await supabase
         .from("pers_sys_bets")
-        .select("id,game_id,status,stake_amount,units,book,price,created_at")
+        .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,placed_ts,created_at")
         .in("game_id", gameIds)
         .eq("status", "UNSETTLED");
 
-      if (openBetsErr) throw openBetsErr;
+      if (betsErr) throw betsErr;
+
+      const bets = (betsData as BetRow[]) || [];
+      setOpenBets(bets);
 
       const ubg: Record<string, boolean> = {};
-      const bbg: Record<string, BetRow> = {};
-      for (const b of (openBets as any) || []) {
+      for (const b of bets) {
         ubg[b.game_id] = true;
-        bbg[b.game_id] = b as BetRow;
       }
       setUnsettledByGame(ubg);
-      setBetByGame(bbg);
 
       setLoading(false);
     } catch (e: any) {
@@ -170,14 +175,28 @@ export default function WeekView_v2() {
     return out;
   }, [signalsAll, games]);
 
+  const betsByGame = useMemo(() => {
+    const out: Record<string, BetRow[]> = {};
+    for (const b of openBets) {
+      if (!out[b.game_id]) out[b.game_id] = [];
+      out[b.game_id].push(b);
+    }
+    return out;
+  }, [openBets]);
+
   const readyGames = useMemo(() => {
-    return games.filter((g) => (byGame[g.id]?.ready?.length || 0) > 0);
-  }, [games, byGame]);
+    return games.filter((g) => (byGame[g.id]?.ready?.length || 0) > 0 && !unsettledByGame[g.id]);
+  }, [games, byGame, unsettledByGame]);
+
+  const placedGames = useMemo(() => {
+    return games.filter((g) => !!unsettledByGame[g.id]);
+  }, [games, unsettledByGame]);
 
   const otherGames = useMemo(() => {
     const readySet = new Set(readyGames.map((g) => g.id));
-    return games.filter((g) => !readySet.has(g.id));
-  }, [games, readyGames]);
+    const placedSet = new Set(placedGames.map((g) => g.id));
+    return games.filter((g) => !readySet.has(g.id) && !placedSet.has(g.id));
+  }, [games, readyGames, placedGames]);
 
   const pendingCount = useMemo(() => {
     let n = 0;
@@ -195,7 +214,7 @@ export default function WeekView_v2() {
             <h1 className="text-2xl font-bold font-mono">This Week</h1>
             {!loading && (
               <div className="text-[11px] font-mono text-muted-foreground mt-1">
-                games={games.length} ready_games={readyGames.length} pending_signals={pendingCount}
+                games={games.length} ready={readyGames.length} placed={placedGames.length} pending_signals={pendingCount}
               </div>
             )}
             {err && <div className="text-[11px] font-mono text-destructive mt-1">{String(err?.message || err)}</div>}
@@ -214,6 +233,7 @@ export default function WeekView_v2() {
           <p className="text-muted-foreground text-sm">Loading…</p>
         ) : (
           <>
+            {/* Bets Ready */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-mono text-primary uppercase tracking-wider flex items-center gap-2">
@@ -227,17 +247,33 @@ export default function WeekView_v2() {
               ) : (
                 <div className="space-y-2">
                   {readyGames.map((g) => (
-                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={!!unsettledByGame[g.id]} betRow={betByGame[g.id] || null} showPending={showPending} variant="ready" onRefresh={refresh} />
+                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant="ready" onRefresh={refresh} />
                   ))}
                 </div>
               )}
             </div>
 
+            {/* Bets Placed */}
+            {placedGames.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-mono text-sky-500 uppercase tracking-wider flex items-center gap-2">
+                  <span className="h-2 w-2 bg-sky-500 rounded-full" />
+                  Bets Placed ({placedGames.length})
+                </h2>
+                <div className="space-y-2">
+                  {placedGames.map((g) => (
+                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={true} placedBets={betsByGame[g.id] || []} showPending={showPending} variant="placed" onRefresh={refresh} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Fixture */}
             <div className="space-y-3">
               <h2 className="text-sm font-mono text-muted-foreground uppercase tracking-wider">Fixture ({otherGames.length})</h2>
               <div className="space-y-2">
                 {otherGames.map((g) => (
-                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={!!unsettledByGame[g.id]} betRow={betByGame[g.id] || null} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} />
+                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} />
                 ))}
               </div>
               {games.length === 0 && <p className="text-muted-foreground text-sm">No upcoming games. Run "Pull Squiggle" first.</p>}
@@ -254,12 +290,12 @@ function GameCard(props: {
   readySignals: SignalV2Row[];
   pendingSignals: SignalV2Row[];
   betPlaced: boolean;
-  betRow?: BetRow | null;
+  placedBets: BetRow[];
   showPending: boolean;
-  variant: "ready" | "normal" | "live";
+  variant: "ready" | "normal" | "live" | "placed";
   onRefresh: () => Promise<void> | void;
 }) {
-  const { game, readySignals, pendingSignals, betPlaced, betRow, showPending, variant, onRefresh } = props;
+  const { game, readySignals, pendingSignals, betPlaced, placedBets, showPending, variant, onRefresh } = props;
 
   const date = new Date(game.start_time_aet);
   const homeTeam = (game.home_team as any)?.canonical_name || "?";
@@ -267,6 +303,7 @@ function GameCard(props: {
 
   const borderClass =
     variant === "ready" ? "border-emerald-500/30 bg-emerald-500/5"
+    : variant === "placed" ? "border-sky-500/30 bg-sky-500/5"
     : variant === "live" ? "border-slate-500/30 bg-slate-500/5"
     : "border-border";
 
@@ -285,7 +322,7 @@ function GameCard(props: {
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">IN PLAY</span>
             )}
             {betPlaced && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500">BET MADE</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-500">BET MADE</span>
             )}
             {!betPlaced && readySignals.map((s) => (
               <span key={s.id} className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary">{s.system_code}</span>
@@ -300,12 +337,25 @@ function GameCard(props: {
           </div>
         </div>
 
-        {betPlaced && betRow && (
-          <div className="mt-2 text-[11px] font-mono text-muted-foreground">
-            bet: {betRow.book || "—"} @ {betRow.price ?? "—"} · units {betRow.units ?? "—"} · stake ${betRow.stake_amount ?? "—"}
+        {/* Placed bet details */}
+        {betPlaced && placedBets.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {placedBets.map((b) => (
+              <div key={b.id} className="text-[11px] font-mono text-muted-foreground flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-500">{b.system_code}</span>
+                <span>{b.leg_type} {b.side}{b.leg_type === "LINE" ? " " + fmtLine(b.line_at_bet) : ""}</span>
+                <span>·</span>
+                <span>{b.book || "—"} @ {b.price ?? "—"}</span>
+                <span>·</span>
+                <span>units {b.units ?? "—"}</span>
+                <span>·</span>
+                <span>stake ${b.stake_amount ?? "—"}</span>
+              </div>
+            ))}
           </div>
         )}
 
+        {/* Ready legs with Accept */}
         {!betPlaced && readySignals.length > 0 && (
           <div className="mt-2 space-y-1">
             {readySignals.map((s) => {
@@ -322,21 +372,12 @@ function GameCard(props: {
                   </div>
                   <button
                     type="button"
-                    disabled={betPlaced}
-                    className={`px-2 py-0.5 rounded ${betPlaced ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-primary/10 text-primary hover:bg-primary/20"}`}
+                    className="px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
                     onClick={async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
 
-                      const msg = [
-                        "Confirm bet create?",
-                        `System: ${s.system_code}`,
-                        `Market: ${String(s.leg_type || s.execution_market || s.model_market || "")}`,
-                        `Side: ${String(s.side || "")}${s.leg_type === "LINE" ? " " + fmtLine(s.line_at_bet ?? null) : ""}`,
-                        `Exec: ${s.exec_best_book || "—"} @ ${s.exec_best_price ?? "—"}`,
-                        `Units: ${unitsOverride ?? s.recommended_units ?? "—"}`
-                      ].join("\n");
-
+                      const msg = `Create bet for ${s.system_code} ${f.market} ${f.side}${f.line}?`;
                       if (!window.confirm(msg)) return;
 
                       try {
@@ -354,7 +395,11 @@ function GameCard(props: {
                         };
                         const { data, error } = await supabase.rpc("accept_leg_create_bet", payload);
                         if (error) { alert(`ACCEPT failed: ${error.message}`); return; }
-                        alert(`ACCEPT result:\n${JSON.stringify(data, null, 2)}`);
+                        const result = data as any;
+                        if (result?.ok === false) {
+                          alert(`ACCEPT rejected: ${result.error || JSON.stringify(result)}`);
+                          return;
+                        }
                         await onRefresh();
                       } catch (err: any) {
                         alert(`ACCEPT failed: ${String(err)}`);

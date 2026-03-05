@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/runner/Dashboard";
-import WeekView from "./pages/runner/WeekView";
+import WeekView from "./pages/runner/WeekView_v2";
 import WeekView_v2 from "./pages/runner/WeekView_v2";
 import GameDetail from "./pages/runner/GameDetail";
 import BetsPage from "./pages/runner/BetsPage";

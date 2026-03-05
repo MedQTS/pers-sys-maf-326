@@ -1081,91 +1081,121 @@ Deno.serve(async (req) => {
           dominatedByGame[g.id] = system_code;
         }
 
-        // --- Overlay child signal (SYS_2 only; conditional AWAY CLV OPEN->T30) ----
-        if (signalStatus !== "BLOCKED") {
+        // --- Overlay child signal (SYS_2: AWAY H2H at T30 if CLV > threshold) ---
+        if (signalStatus !== "BLOCKED")
           try {
-            const isSys2 = system_code === "SYS_2";
-            const overlayEnabled = isSys2 && !!reason?.overlay_config?.overlay_h2h;
+            const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
             const primaryReady = signalStatus === "READY";
 
-            if (overlayEnabled && primaryReady) {
+            // Only SYS_2 has the locked overlay rule:
+            // "H2H overlay only if Away + CLV(open->T30) > 0.03"
+            if (overlayEnabled && primaryReady && system_code === "SYS_2") {
               const overlayExecSnap: "T30" = "T30";
 
-              // Need OPEN and T30 H2H to compute CLV for AWAY
-              const openH2H_forOverlay = openH2H;
-              const t30H2H_forOverlay = pickSnap(gameSnaps, overlayExecSnap, "H2H");
+              // We only ever overlay the AWAY side (locked spec).
+              const overlaySide: Side = "AWAY";
 
-              if (openH2H_forOverlay && t30H2H_forOverlay) {
-                const openAway = openH2H_forOverlay.away_price;
-                const t30Away = t30H2H_forOverlay.away_price;
+              // Need OPEN + T30 H2H snapshots to evaluate CLV and to fill exec_best_*
+              const openSnap = openH2H;
+              const t30Snap = pickSnap(gameSnaps, overlayExecSnap, "H2H");
+
+              // If we can't evaluate yet, do not create/keep a misleading overlay row.
+              if (!openSnap || !t30Snap) {
+                // Best-effort cleanup of any prior overlay row for this match/system
+                // (prevents stale "waiting_overlay_snapshot" rows).
+                await supabase
+                  .from("pers_sys_signals_v2")
+                  .delete()
+                  .eq("system_code", system_code)
+                  .eq("game_id", g.id)
+                  .eq("execution_snapshot", overlayExecSnap)
+                  .eq("leg_type", "H2H");
+              } else {
+                const openAway = openSnap.away_price;
+                const t30Away = t30Snap.away_price;
+
+                // Compute CLV(open->T30) for AWAY; must be positive and exceed threshold.
+                const clvMin = 0.03;
+                let clvOk = false;
+                let clvRel: number | null = null;
 
                 if (openAway && t30Away) {
-                  const overlayClv = relCLV(openAway, t30Away);
-                  const minOverlayClv = 0.03;
+                  clvRel = relCLV(openAway, t30Away);
+                  clvOk = clvRel > clvMin;
+                }
 
-                  if (overlayClv > minOverlayClv) {
-                    const execBestPrice = t30H2H_forOverlay.exec_best_away_price ?? null;
-                    const execBestBook = t30H2H_forOverlay.exec_best_away_book ?? null;
+                // If the overlay condition does not pass, remove any prior overlay row.
+                if (!clvOk) {
+                  await supabase
+                    .from("pers_sys_signals_v2")
+                    .delete()
+                    .eq("system_code", system_code)
+                    .eq("game_id", g.id)
+                    .eq("execution_snapshot", overlayExecSnap)
+                    .eq("leg_type", "H2H");
+                } else {
+                  // We have the condition satisfied. Now decide READY vs PENDING based on market data at T30.
+                  const t30Has = hasMarketData(t30Snap, "H2H");
 
-                    const overlayReason = {
-                      ...reason,
-                      status: "READY",
-                      overlay_child: {
-                        market: "H2H",
-                        required_execution_snapshot: overlayExecSnap,
-                        side: "AWAY",
-                        clv_open_to_t30: Number(overlayClv.toFixed(4)),
-                        clv_min: minOverlayClv,
-                      },
-                    };
+                  const overlayStatus: Status = t30Has ? "READY" : "PENDING";
 
-                    const overlayRow = {
+                  // Exec best fields are drawn from the T30 snapshot row.
+                  const overlayExecBestPrice = t30Has ? t30Snap.exec_best_away_price : null;
+                  const overlayExecBestBook = t30Has ? t30Snap.exec_best_away_book : null;
+
+                  const overlayReason: Record<string, any> = {
+                    ...reason,
+                    // Align metadata to what we're actually doing for overlay
+                    status: overlayStatus,
+                    execution_snapshot: overlayExecSnap,
+                    overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
+                    overlay_child: {
+                      required_execution_snapshot: overlayExecSnap,
+                      market: "H2H",
+                      side: overlaySide,
+                      clv_rel: clvRel !== null ? Number(clvRel.toFixed(4)) : null,
+                      clv_min: clvMin,
+                    },
+                  };
+
+                  if (overlayStatus === "PENDING") {
+                    overlayReason.fail = "waiting_overlay_snapshot";
+                  } else {
+                    // Ensure we don't leave stale fail markers once READY
+                    delete overlayReason.fail;
+                  }
+
+                  // Upsert overlay row using the same conflict key pattern (system_code,game_id,execution_snapshot,leg_type,side)
+                  await supabase.from("pers_sys_signals_v2").upsert(
+                    {
                       system_code,
                       game_id: g.id,
                       model_snapshot: modelSnap,
                       execution_snapshot: overlayExecSnap,
                       model_market: "H2H",
                       execution_market: "H2H",
-                      pass: true,
-                      signal_status: "READY",
-                      parent_signal_id: null as string | null,
+                      pass: overlayStatus === "READY",
+                      signal_status: overlayStatus,
+                      parent_signal_id: null,
                       leg_type: "H2H",
-                      side: "AWAY" as Side,
+                      side: overlaySide,
                       line_at_bet: null,
-                      ref_price: t30Away,
-                      exec_best_price: execBestPrice,
-                      exec_best_book: execBestBook,
+                      ref_price: null,
+                      exec_best_price: overlayExecBestPrice,
+                      exec_best_book: overlayExecBestBook,
                       recommended_units: null,
                       reason_json: overlayReason,
                       evaluated_at: new Date().toISOString(),
                       updated_at: new Date().toISOString(),
-                    };
-
-                    const { data: existingOverlay, error: exErr } = await supabase
-                      .from("pers_sys_signals_v2")
-                      .select("id")
-                      .eq("system_code", system_code)
-                      .eq("game_id", g.id)
-                      .eq("execution_snapshot", overlayExecSnap)
-                      .eq("leg_type", "H2H")
-                      .eq("side", "AWAY")
-                      .maybeSingle();
-
-                    if (exErr) throw exErr;
-
-                    if (existingOverlay?.id) {
-                      await supabase.from("pers_sys_signals_v2").update(overlayRow).eq("id", existingOverlay.id);
-                    } else {
-                      await supabase.from("pers_sys_signals_v2").insert(overlayRow);
-                    }
-                  }
+                    },
+                    { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
+                  );
                 }
               }
             }
           } catch (e) {
             console.warn("overlay_signal_write_failed", e);
           }
-        }
       }
     }
 

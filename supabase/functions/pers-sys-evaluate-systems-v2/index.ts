@@ -658,6 +658,62 @@ Deno.serve(async (req) => {
           return "MODEL";
         }
 
+        function isStructuralFail(code: string | undefined | null): boolean {
+          const c = String(code || "");
+
+          // Pure time/market-dependent states are NOT structural
+          if (
+            c === "awaiting_t30_snapshot" ||
+            c === "waiting_overlay_snapshot" ||
+            c === "missing_execution_snapshot" ||
+            c === "overlay_clv_fail" ||
+            c === "clv_fail" ||
+            c === "line_clv" ||
+            c === "missing_clv_prices" ||
+            c === "missing_lines"
+          ) {
+            return false;
+          }
+
+          // If it is a gate/system/data issue tied to fixture/identity/window, treat as structural
+          if (
+            c === "window" ||
+            c === "gf_replay_excluded" ||
+            c === "gf_winner_not_in_game" ||
+            c === "gf_not_fav_open" ||
+            c === "gf_open_odds_band" ||
+            c === "not_home_underdog" ||
+            c === "not_away_dog_open" ||
+            c === "not_home_fav" ||
+            c === "not_interstate" ||
+            c === "venue_state" ||
+            c === "opponent_not_top8" ||
+            c === "opponent_wins" ||
+            c === "dead_side_ambiguous" ||
+            c === "h2h_band" ||
+            c === "line_not_positive" ||
+            c === "fav_odds_band" ||
+            c === "fav_streak" ||
+            c === "pct_diff" ||
+            c === "open_band" ||
+            c === "odds_band" ||
+            c === "not_lost_prior"
+          ) {
+            return true;
+          }
+
+          // missing model data / missing round context are effectively structural for UI purposes
+          if (
+            c === "missing_model_data" ||
+            c === "missing_round_context" ||
+            c === "no_gf_winner_set"
+          ) {
+            return true;
+          }
+
+          return false;
+        }
+
         // default state
         let modelPass = true;
 
@@ -1184,6 +1240,38 @@ Deno.serve(async (req) => {
         // Enrich reason_json (keep it lean — typed columns hold the primary data)
         reason.status = signalStatus;
 
+        // Structural-vs-variable rule:
+        // If this row would only be PENDING because the unmet condition is structural,
+        // keep it in audit only and do not surface it as a signal row.
+        if (signalStatus === "PENDING" && isStructuralFail(reason.fail)) {
+          await upsertAuditV2({
+            system_code,
+            game_id: g.id,
+            season,
+            round: round ?? null,
+            model_snapshot: modelSnap,
+            execution_snapshot: execSnap,
+            model_market: sys.primary_market ?? primaryMarket,
+            execution_market: primaryMarket,
+            audit_status: "FAIL",
+            fail_stage: classifyFailStage(reason.fail),
+            fail_code: reason.fail ?? "structural_pending_blocked",
+            leg_type: primaryMarket,
+            side: primaryLeg.side as Side,
+            line_at_bet: lineAtBet,
+            ref_price: primaryLeg.ref_price ?? null,
+            exec_best_price: null,
+            exec_best_book: null,
+            recommended_units: reason.recommended_units ?? null,
+            reason_json: {
+              ...reason,
+              status: "FAIL",
+              fail: reason.fail ?? "structural_pending_blocked",
+            },
+          });
+          continue;
+        }
+
         await upsertAuditV2({
           system_code,
           game_id: g.id,
@@ -1271,7 +1359,38 @@ Deno.serve(async (req) => {
                   fail: "awaiting_t30_snapshot",
                 };
 
-                await supabase.from("pers_sys_signals_v2").upsert(
+                // Only show overlay watch rows when the remaining unmet condition is time/market dependent.
+                  // If the setup is structurally impossible, audit it but do not surface a pending row.
+                  if (isStructuralFail(reason.fail)) {
+                    await upsertAuditV2({
+                      system_code,
+                      game_id: g.id,
+                      season,
+                      round: round ?? null,
+                      model_snapshot: modelSnap,
+                      execution_snapshot: overlayExecSnap,
+                      model_market: "H2H",
+                      execution_market: "H2H",
+                      audit_status: "FAIL",
+                      fail_stage: classifyFailStage(reason.fail),
+                      fail_code: reason.fail ?? "structural_overlay_blocked",
+                      leg_type: "H2H",
+                      side: overlaySide,
+                      line_at_bet: null,
+                      ref_price: null,
+                      exec_best_price: null,
+                      exec_best_book: null,
+                      recommended_units: null,
+                      reason_json: {
+                        ...overlayReason,
+                        status: "FAIL",
+                        fail: reason.fail ?? "structural_overlay_blocked",
+                      },
+                    });
+                    continue;
+                  }
+
+                  await supabase.from("pers_sys_signals_v2").upsert(
                   {
                     system_code,
                     game_id: g.id,

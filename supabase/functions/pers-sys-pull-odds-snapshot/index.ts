@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
     if (!apiKey) throw new Error("PERS_SYS_ODDS_API_KEY not set");
 
     const bufferMinutes = snapshotType === "OPEN" ? 0 : 60;
-    const lookaheadDays = snapshotType === "OPEN" ? 14 : 7;
+    const lookaheadDays = snapshotType === "OPEN" ? 10 : 7;
     const now = new Date();
 
     const cutoffStart = new Date(now.getTime() + bufferMinutes * 60 * 1000);

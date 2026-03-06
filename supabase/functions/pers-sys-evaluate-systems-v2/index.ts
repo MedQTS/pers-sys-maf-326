@@ -658,6 +658,62 @@ Deno.serve(async (req) => {
           return "MODEL";
         }
 
+        function isStructuralFail(code: string | undefined | null): boolean {
+          const c = String(code || "");
+
+          // Pure time/market-dependent states are NOT structural
+          if (
+            c === "awaiting_t30_snapshot" ||
+            c === "waiting_overlay_snapshot" ||
+            c === "missing_execution_snapshot" ||
+            c === "overlay_clv_fail" ||
+            c === "clv_fail" ||
+            c === "line_clv" ||
+            c === "missing_clv_prices" ||
+            c === "missing_lines"
+          ) {
+            return false;
+          }
+
+          // If it is a gate/system/data issue tied to fixture/identity/window, treat as structural
+          if (
+            c === "window" ||
+            c === "gf_replay_excluded" ||
+            c === "gf_winner_not_in_game" ||
+            c === "gf_not_fav_open" ||
+            c === "gf_open_odds_band" ||
+            c === "not_home_underdog" ||
+            c === "not_away_dog_open" ||
+            c === "not_home_fav" ||
+            c === "not_interstate" ||
+            c === "venue_state" ||
+            c === "opponent_not_top8" ||
+            c === "opponent_wins" ||
+            c === "dead_side_ambiguous" ||
+            c === "h2h_band" ||
+            c === "line_not_positive" ||
+            c === "fav_odds_band" ||
+            c === "fav_streak" ||
+            c === "pct_diff" ||
+            c === "open_band" ||
+            c === "odds_band" ||
+            c === "not_lost_prior"
+          ) {
+            return true;
+          }
+
+          // missing model data / missing round context are effectively structural for UI purposes
+          if (
+            c === "missing_model_data" ||
+            c === "missing_round_context" ||
+            c === "no_gf_winner_set"
+          ) {
+            return true;
+          }
+
+          return false;
+        }
+
         // default state
         let modelPass = true;
 

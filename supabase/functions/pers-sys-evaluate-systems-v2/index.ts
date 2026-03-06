@@ -1101,15 +1101,44 @@ Deno.serve(async (req) => {
 
               // If we can't evaluate yet, do not create/keep a misleading overlay row.
               if (!openSnap || !t30Snap) {
-                // Best-effort cleanup of any prior overlay row for this match/system
-                // (prevents stale "waiting_overlay_snapshot" rows).
-                await supabase
-                  .from("pers_sys_signals_v2")
-                  .delete()
-                  .eq("system_code", system_code)
-                  .eq("game_id", g.id)
-                  .eq("execution_snapshot", overlayExecSnap)
-                  .eq("leg_type", "H2H");
+                // Upsert a watch-state placeholder so the UI shows a potential upcoming overlay
+                const placeholderReason: Record<string, any> = {
+                  ...reason,
+                  status: "PENDING",
+                  execution_snapshot: overlayExecSnap,
+                  overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
+                  overlay_child: {
+                    required_execution_snapshot: overlayExecSnap,
+                    market: "H2H",
+                    side: overlaySide,
+                  },
+                  fail: "awaiting_t30_snapshot",
+                };
+
+                await supabase.from("pers_sys_signals_v2").upsert(
+                  {
+                    system_code,
+                    game_id: g.id,
+                    model_snapshot: modelSnap,
+                    execution_snapshot: overlayExecSnap,
+                    model_market: "H2H",
+                    execution_market: "H2H",
+                    pass: false,
+                    signal_status: "PENDING",
+                    parent_signal_id: null,
+                    leg_type: "H2H",
+                    side: overlaySide,
+                    line_at_bet: null,
+                    ref_price: null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    recommended_units: null,
+                    reason_json: placeholderReason,
+                    evaluated_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
+                );
               } else {
                 const openAway = openSnap.away_price;
                 const t30Away = t30Snap.away_price;

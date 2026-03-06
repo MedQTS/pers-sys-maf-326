@@ -391,39 +391,47 @@ Deno.serve(async (req) => {
     if (seasonMetaErr) throw seasonMetaErr;
 
     // totalRounds (authoritative):
-    // Prefer season config table (computed from games), fall back to MAX(round) from pers_sys_games.
-    // NOTE: upcomingGames is horizon-limited and cannot be used to infer season length.
+    // 1) prefer pers_sys_season_config.total_rounds
+    // 2) fallback to max(round) from pers_sys_games for the season
+    // 3) final fallback to upcomingGames max round
     let totalRounds = 0;
 
-    try {
-      const { data: roundsMeta, error: roundsMetaErr } = await supabase
+    {
+      const { data: seasonCfg, error: seasonCfgErr } = await supabase
         .from("pers_sys_season_config")
         .select("total_rounds")
         .eq("season", season)
         .maybeSingle();
 
-      if (roundsMetaErr) throw roundsMetaErr;
+      if (seasonCfgErr) throw seasonCfgErr;
 
-      if (roundsMeta?.total_rounds && Number(roundsMeta.total_rounds) > 0) {
-        totalRounds = Number(roundsMeta.total_rounds);
+      if (
+        seasonCfg &&
+        typeof (seasonCfg as any).total_rounds === "number" &&
+        (seasonCfg as any).total_rounds > 0
+      ) {
+        totalRounds = Number((seasonCfg as any).total_rounds);
       }
-    } catch (_) {
-      // ignore and fall back
     }
 
     if (!totalRounds) {
-      // Fall back: compute from all season games.
-      const { data: rMax, error: rMaxErr } = await supabase
+      const { data: seasonRounds, error: seasonRoundsErr } = await supabase
         .from("pers_sys_games")
         .select("round")
         .eq("season", season)
-        .not("round", "is", null);
+        .not("round", "is", null)
+        .order("round", { ascending: false })
+        .limit(1);
 
-      if (rMaxErr) throw rMaxErr;
+      if (seasonRoundsErr) throw seasonRoundsErr;
 
+      const maxRound = Number((seasonRounds?.[0] as any)?.round ?? 0);
+      if (maxRound > 0) totalRounds = maxRound;
+    }
+
+    if (!totalRounds) {
       totalRounds = Math.max(
-        0,
-        ...((rMax || []) as any[]).map((x: any) => (typeof x.round === "number" ? x.round : 0))
+        ...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0))
       );
     }
 

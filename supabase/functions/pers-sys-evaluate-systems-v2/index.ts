@@ -800,7 +800,7 @@ Deno.serve(async (req) => {
                     })
                   );
 
-                  reason.overlay = { type: "H2H", enabled: true, depends_on: execSnap };
+                  reason.overlay = { type: "H2H", enabled: true, depends_on: "T30" };
                 }
               }
             }

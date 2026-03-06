@@ -1359,7 +1359,38 @@ Deno.serve(async (req) => {
                   fail: "awaiting_t30_snapshot",
                 };
 
-                await supabase.from("pers_sys_signals_v2").upsert(
+                // Only show overlay watch rows when the remaining unmet condition is time/market dependent.
+                  // If the setup is structurally impossible, audit it but do not surface a pending row.
+                  if (isStructuralFail(reason.fail)) {
+                    await upsertAuditV2({
+                      system_code,
+                      game_id: g.id,
+                      season,
+                      round: round ?? null,
+                      model_snapshot: modelSnap,
+                      execution_snapshot: overlayExecSnap,
+                      model_market: "H2H",
+                      execution_market: "H2H",
+                      audit_status: "FAIL",
+                      fail_stage: classifyFailStage(reason.fail),
+                      fail_code: reason.fail ?? "structural_overlay_blocked",
+                      leg_type: "H2H",
+                      side: overlaySide,
+                      line_at_bet: null,
+                      ref_price: null,
+                      exec_best_price: null,
+                      exec_best_book: null,
+                      recommended_units: null,
+                      reason_json: {
+                        ...overlayReason,
+                        status: "FAIL",
+                        fail: reason.fail ?? "structural_overlay_blocked",
+                      },
+                    });
+                    continue;
+                  }
+
+                  await supabase.from("pers_sys_signals_v2").upsert(
                   {
                     system_code,
                     game_id: g.id,

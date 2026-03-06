@@ -501,6 +501,63 @@ Deno.serve(async (req) => {
       return !error;
     }
 
+    async function upsertAuditV2(args: {
+      system_code: string;
+      game_id: string;
+      season: number;
+      round: number | null;
+      model_snapshot: string;
+      execution_snapshot: string;
+      model_market: MarketType;
+      execution_market: MarketType;
+      audit_status: "READY" | "PENDING" | "FAIL" | "BLOCKED";
+      fail_stage: "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" | null;
+      fail_code: string | null;
+      leg_type: MarketType | null;
+      side: Side | null;
+      line_at_bet: number | null;
+      ref_price: number | null;
+      exec_best_price: number | null;
+      exec_best_book: string | null;
+      recommended_units: number | null;
+      reason_json: Record<string, any>;
+    }) {
+      const audit_key = `${args.leg_type ?? "NONE"}:${args.side ?? "NONE"}`;
+
+      const { error } = await supabase
+        .from("pers_sys_signal_audit_v2")
+        .upsert(
+          {
+            system_code: args.system_code,
+            game_id: args.game_id,
+            season: args.season,
+            round: args.round,
+            model_snapshot: args.model_snapshot,
+            execution_snapshot: args.execution_snapshot,
+            model_market: args.model_market,
+            execution_market: args.execution_market,
+            audit_status: args.audit_status,
+            fail_stage: args.fail_stage,
+            fail_code: args.fail_code,
+            audit_key,
+            leg_type: args.leg_type,
+            side: args.side,
+            line_at_bet: args.line_at_bet,
+            ref_price: args.ref_price,
+            exec_best_price: args.exec_best_price,
+            exec_best_book: args.exec_best_book,
+            recommended_units: args.recommended_units,
+            reason_json: args.reason_json,
+            evaluated_at: new Date().toISOString(),
+          },
+          { onConflict: "system_code,game_id,model_snapshot,execution_snapshot,audit_key" }
+        );
+
+      if (error) {
+        console.error("audit upsert error:", args.system_code, args.game_id, error.message);
+      }
+    }
+
     let signalsCreated = 0;
 
     for (const sysRaw of systemsSorted as any[]) {
@@ -576,6 +633,30 @@ Deno.serve(async (req) => {
           system_group: sys.system_group ?? null,
           evaluation_version: sys.evaluation_version ?? null,
         };
+
+        function classifyFailStage(code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" {
+          const c = String(code || "");
+          if (
+            c.startsWith("missing_") ||
+            c === "no_gf_winner_set"
+          ) return "DATA";
+
+          if (
+            c === "window"
+          ) return "GATE";
+
+          if (
+            c.startsWith("blocked_by_")
+          ) return "SYSTEM";
+
+          if (
+            c.includes("overlay") ||
+            c.includes("awaiting_t30_snapshot") ||
+            c.includes("waiting_overlay_snapshot")
+          ) return "OVERLAY";
+
+          return "MODEL";
+        }
 
         // default state
         let modelPass = true;
@@ -1014,7 +1095,27 @@ Deno.serve(async (req) => {
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
         if (!modelPass || !primaryLeg) {
-          // Model failed or no leg — skip writing signal
+          await upsertAuditV2({
+            system_code,
+            game_id: g.id,
+            season,
+            round: round ?? null,
+            model_snapshot: modelSnap,
+            execution_snapshot: execSnap,
+            model_market: (sys.primary_market ?? "H2H") as MarketType,
+            execution_market: (sys.primary_market ?? "H2H") as MarketType,
+            audit_status: "FAIL",
+            fail_stage: classifyFailStage(reason.fail),
+            fail_code: reason.fail ?? "model_failed",
+            leg_type: null,
+            side: null,
+            line_at_bet: null,
+            ref_price: null,
+            exec_best_price: null,
+            exec_best_book: null,
+            recommended_units: reason.recommended_units ?? null,
+            reason_json: reason,
+          });
           continue;
         }
 
@@ -1044,7 +1145,27 @@ Deno.serve(async (req) => {
             }
           }
         } else if (!allowCandidate) {
-          // Not allowed to show as PENDING — skip
+          await upsertAuditV2({
+            system_code,
+            game_id: g.id,
+            season,
+            round: round ?? null,
+            model_snapshot: modelSnap,
+            execution_snapshot: execSnap,
+            model_market: sys.primary_market ?? primaryMarket,
+            execution_market: primaryMarket,
+            audit_status: "FAIL",
+            fail_stage: "EXEC",
+            fail_code: "missing_execution_snapshot",
+            leg_type: primaryMarket,
+            side: primaryLeg.side as Side,
+            line_at_bet: lineAtBet,
+            ref_price: primaryLeg.ref_price ?? null,
+            exec_best_price: null,
+            exec_best_book: null,
+            recommended_units: reason.recommended_units ?? null,
+            reason_json: reason,
+          });
           continue;
         }
 
@@ -1062,6 +1183,33 @@ Deno.serve(async (req) => {
 
         // Enrich reason_json (keep it lean — typed columns hold the primary data)
         reason.status = signalStatus;
+
+        await upsertAuditV2({
+          system_code,
+          game_id: g.id,
+          season,
+          round: round ?? null,
+          model_snapshot: modelSnap,
+          execution_snapshot: execSnap,
+          model_market: sys.primary_market ?? primaryMarket,
+          execution_market: primaryMarket,
+          audit_status: signalStatus as "READY" | "PENDING" | "BLOCKED",
+          fail_stage: signalStatus === "BLOCKED" ? "SYSTEM" : signalStatus === "PENDING" ? "EXEC" : null,
+          fail_code:
+            signalStatus === "BLOCKED"
+              ? String(reason.fail ?? "blocked")
+              : signalStatus === "PENDING"
+              ? String(reason.fail ?? "awaiting_execution_snapshot")
+              : null,
+          leg_type: primaryMarket,
+          side: primaryLeg.side as Side,
+          line_at_bet: lineAtBet,
+          ref_price: primaryLeg.ref_price ?? null,
+          exec_best_price: execBestPrice,
+          exec_best_book: execBestBook,
+          recommended_units: reason.recommended_units ?? null,
+          reason_json: reason,
+        });
 
         const wrote = await upsertSignalV2({
           system_code,
@@ -1147,6 +1295,28 @@ Deno.serve(async (req) => {
                   },
                   { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
                 );
+
+                await upsertAuditV2({
+                    system_code,
+                    game_id: g.id,
+                    season,
+                    round: round ?? null,
+                    model_snapshot: modelSnap,
+                    execution_snapshot: overlayExecSnap,
+                    model_market: "H2H",
+                    execution_market: "H2H",
+                    audit_status: "PENDING",
+                    fail_stage: "OVERLAY",
+                    fail_code: "awaiting_t30_snapshot",
+                    leg_type: "H2H",
+                    side: overlaySide,
+                    line_at_bet: null,
+                    ref_price: null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    recommended_units: null,
+                    reason_json: placeholderReason,
+                  });
               } else {
                 const openAway = openSnap.away_price;
                 const t30Away = t30Snap.away_price;
@@ -1163,6 +1333,38 @@ Deno.serve(async (req) => {
 
                 // If the overlay condition does not pass, remove any prior overlay row.
                 if (!clvOk) {
+                  await upsertAuditV2({
+                    system_code,
+                    game_id: g.id,
+                    season,
+                    round: round ?? null,
+                    model_snapshot: modelSnap,
+                    execution_snapshot: overlayExecSnap,
+                    model_market: "H2H",
+                    execution_market: "H2H",
+                    audit_status: "FAIL",
+                    fail_stage: "OVERLAY",
+                    fail_code: "overlay_clv_fail",
+                    leg_type: "H2H",
+                    side: overlaySide,
+                    line_at_bet: null,
+                    ref_price: null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    recommended_units: null,
+                    reason_json: {
+                      ...reason,
+                      execution_snapshot: overlayExecSnap,
+                      overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
+                      overlay_child: {
+                        required_execution_snapshot: overlayExecSnap,
+                        market: "H2H",
+                        side: overlaySide,
+                      },
+                      fail: "overlay_clv_fail",
+                    },
+                  });
+
                   await supabase
                     .from("pers_sys_signals_v2")
                     .delete()
@@ -1227,6 +1429,28 @@ Deno.serve(async (req) => {
                     },
                     { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
                   );
+
+                  await upsertAuditV2({
+                    system_code,
+                    game_id: g.id,
+                    season,
+                    round: round ?? null,
+                    model_snapshot: modelSnap,
+                    execution_snapshot: overlayExecSnap,
+                    model_market: "H2H",
+                    execution_market: "H2H",
+                    audit_status: overlayStatus === "READY" ? "READY" : "PENDING",
+                    fail_stage: overlayStatus === "READY" ? null : "OVERLAY",
+                    fail_code: overlayStatus === "READY" ? null : String(overlayReason.fail ?? "waiting_overlay_snapshot"),
+                    leg_type: "H2H",
+                    side: overlaySide,
+                    line_at_bet: null,
+                    ref_price: null,
+                    exec_best_price: overlayExecBestPrice,
+                    exec_best_book: overlayExecBestBook,
+                    recommended_units: null,
+                    reason_json: overlayReason,
+                  });
                 }
               }
             }

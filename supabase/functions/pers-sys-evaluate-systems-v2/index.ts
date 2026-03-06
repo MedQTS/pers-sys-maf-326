@@ -1240,6 +1240,38 @@ Deno.serve(async (req) => {
         // Enrich reason_json (keep it lean — typed columns hold the primary data)
         reason.status = signalStatus;
 
+        // Structural-vs-variable rule:
+        // If this row would only be PENDING because the unmet condition is structural,
+        // keep it in audit only and do not surface it as a signal row.
+        if (signalStatus === "PENDING" && isStructuralFail(reason.fail)) {
+          await upsertAuditV2({
+            system_code,
+            game_id: g.id,
+            season,
+            round: round ?? null,
+            model_snapshot: modelSnap,
+            execution_snapshot: execSnap,
+            model_market: sys.primary_market ?? primaryMarket,
+            execution_market: primaryMarket,
+            audit_status: "FAIL",
+            fail_stage: classifyFailStage(reason.fail),
+            fail_code: reason.fail ?? "structural_pending_blocked",
+            leg_type: primaryMarket,
+            side: primaryLeg.side as Side,
+            line_at_bet: lineAtBet,
+            ref_price: primaryLeg.ref_price ?? null,
+            exec_best_price: null,
+            exec_best_book: null,
+            recommended_units: reason.recommended_units ?? null,
+            reason_json: {
+              ...reason,
+              status: "FAIL",
+              fail: reason.fail ?? "structural_pending_blocked",
+            },
+          });
+          continue;
+        }
+
         await upsertAuditV2({
           system_code,
           game_id: g.id,

@@ -1135,52 +1135,95 @@ Deno.serve(async (req) => {
           }
         }
 
-        // SYS_6 — Dog Mid-Season (away dog OPEN; CLV OPEN->modelSnap)
+        // SYS_6 — Dog Mid-Season (HARD+)
         if (system_code === "SYS_6") {
           if (!openH2H || !modelH2H) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
-            const awayIsDogOpen = (openH2H.away_price ?? 0) > (openH2H.home_price ?? 0);
-            if (!awayIsDogOpen) {
-              modelPass = false;
-              reason.fail = "not_away_dog_open";
-            }
 
-            const openAway = openH2H.away_price;
-            if (!openAway || openAway < 3.5 || openAway > 7.0) {
-              modelPass = false;
-              reason.fail = "open_band";
-            }
+            // Determine dog
+            const homeDog = (modelH2H.home_price ?? 0) > (modelH2H.away_price ?? 0);
+            const dogSide: Side = homeDog ? "HOME" : "AWAY";
 
-            if (modelPass) {
-              const closeAway = modelH2H.away_price;
-              if (!openAway || !closeAway) {
+            const openDogPrice = dogSide === "HOME"
+              ? openH2H.home_price
+              : openH2H.away_price;
+
+            const modelDogPrice = dogSide === "HOME"
+              ? modelH2H.home_price
+              : modelH2H.away_price;
+
+            if (!openDogPrice || !modelDogPrice) {
+              modelPass = false;
+              reason.fail = "missing_prices";
+            } else {
+
+              const clv = Number((modelDogPrice - openDogPrice).toFixed(3));
+              reason.h2h_clv = clv;
+
+              if (clv < 0.01) {
                 modelPass = false;
-                reason.fail = "missing_clv_prices";
-              } else {
-                const clv = relCLV(openAway, closeAway);
-                reason.clv_rel = Number(clv.toFixed(4));
-                if (clv < 0.01) {
-                  modelPass = false;
-                  reason.fail = "clv_fail";
-                }
+                reason.fail = "clv_below_threshold";
               }
-            }
 
-            if (modelPass) {
-              reason.legs.push(
-                buildLegH2H({
-                  system_code,
-                  snapshot_type: modelSnap,
-                  side: "AWAY",
-                  ref_price: modelH2H.away_price ?? null,
-                  exec_best_price: null,
-                  exec_best_book: null,
-                  ref_books_observed: modelH2H.ref_books_observed ?? [],
-                  exec_books_observed: modelH2H.exec_books_observed ?? [],
-                })
-              );
+              if (modelPass) {
+
+                let stakePct = 1.5;
+
+                if (clv >= 0.03) stakePct = 2.0;
+                if (clv >= 0.06) stakePct = 2.5;
+
+                reason.tier = stakePct;
+
+                // Amplifier tracking
+                reason.amplifiers = [];
+
+                // Large spread amplifier
+                if (modelLine) {
+                  const dogLine = dogSide === "HOME"
+                    ? modelLine.home_line
+                    : modelLine.away_line;
+
+                  if (dogLine !== null && dogLine >= 18) {
+                    stakePct += 0.25;
+                    reason.amplifiers.push("large_spread");
+                  }
+                }
+
+                // Early agreement amplifier (T30 CLV)
+                if (execH2H) {
+                  const execDogPrice = dogSide === "HOME"
+                    ? execH2H.home_price
+                    : execH2H.away_price;
+
+                  if (execDogPrice && openDogPrice) {
+                    const t30Clv = execDogPrice - openDogPrice;
+
+                    if (t30Clv >= 0.04) {
+                      stakePct += 0.25;
+                      reason.amplifiers.push("early_agreement");
+                    }
+                  }
+                }
+
+                if (stakePct > 2.5) stakePct = 2.5;
+
+                reason.recommended_units = stakePct;
+
+                reason.legs.push(
+                  buildLegH2H({
+                    system_code,
+                    snapshot_type: modelSnap,
+                    side: dogSide,
+                    ref_price: modelDogPrice,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    ref_books_observed: modelH2H.ref_books_observed ?? [],
+                    exec_books_observed: modelH2H.exec_books_observed ?? [],
+                  })
+                );
+              }
             }
           }
         }

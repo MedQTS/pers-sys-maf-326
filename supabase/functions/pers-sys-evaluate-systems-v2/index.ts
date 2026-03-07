@@ -1,4 +1,5 @@
 // supabase/functions/pers-sys-evaluate-systems-v2/index.ts
+// deploy-test-marker-1
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -634,7 +635,7 @@ Deno.serve(async (req) => {
           evaluation_version: sys.evaluation_version ?? null,
         };
 
-        function classifyFailStage(code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" {
+        const classifyFailStage = (code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" => {
           const c = String(code || "");
           if (
             c.startsWith("missing_") ||
@@ -656,9 +657,9 @@ Deno.serve(async (req) => {
           ) return "OVERLAY";
 
           return "MODEL";
-        }
+        };
 
-        function isStructuralFail(code: string | undefined | null): boolean {
+        const isStructuralFail = (code: string | undefined | null): boolean => {
           const c = String(code || "");
 
           // Pure time/market-dependent states are NOT structural
@@ -713,7 +714,7 @@ Deno.serve(async (req) => {
           }
 
           return false;
-        }
+        };
 
         // default state
         let modelPass = true;
@@ -1917,3 +1918,4 @@ Deno.serve(async (req) => {
     });
   }
 });
+

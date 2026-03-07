@@ -658,7 +658,7 @@ Deno.serve(async (req) => {
           return "MODEL";
         };
 
-        function isStructuralFail(code: string | undefined | null): boolean {
+        const isStructuralFail = (code: string | undefined | null): boolean => {
           const c = String(code || "");
 
           // Pure time/market-dependent states are NOT structural

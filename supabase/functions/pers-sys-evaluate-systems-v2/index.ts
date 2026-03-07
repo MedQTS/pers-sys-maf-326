@@ -1586,6 +1586,7 @@ Deno.serve(async (req) => {
                   } else {
                     // Ensure we don't leave stale fail markers once READY
                     delete overlayReason.fail;
+                    overlayReason.recommended_units = 0.4;
                   }
 
                   // Upsert overlay row using the same conflict key pattern (system_code,game_id,execution_snapshot,leg_type,side)

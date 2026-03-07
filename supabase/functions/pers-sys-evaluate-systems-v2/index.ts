@@ -822,7 +822,7 @@ Deno.serve(async (req) => {
 
                   // --- amplifier 2: large spread ---
                   const lineAtModel = deadSide === "HOME" ? modelLine.home_line : modelLine.away_line;
-                  if (lineAtModel !== null && Math.abs(lineAtModel) >= 18) {
+                  if (lineAtModel !== null && lineAtModel >= 18) {
                     stake += 0.5;
                     reason.amplifiers = reason.amplifiers || [];
                     reason.amplifiers.push("large_spread_floor");

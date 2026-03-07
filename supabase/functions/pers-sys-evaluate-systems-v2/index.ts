@@ -1633,7 +1633,7 @@ Deno.serve(async (req) => {
                     ref_price: null,
                     exec_best_price: overlayExecBestPrice,
                     exec_best_book: overlayExecBestBook,
-                    recommended_units: null,
+                    recommended_units: overlayStatus === "READY" ? 0.4 : null,
                     reason_json: overlayReason,
                   });
                 }

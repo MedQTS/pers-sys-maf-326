@@ -928,60 +928,139 @@ Deno.serve(async (req) => {
           }
         }
 
-        // SYS_3 — Form Dog (HOME underdog H2H)
+        // SYS_3 — Form Dog (HARD+)
         if (system_code === "SYS_3") {
-          if (!modelH2H || !homeState || !awayState) {
+          if (!openH2H || !modelH2H || !homeState || !awayState) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
-            const homeFav = (modelH2H.home_price ?? 999) < (modelH2H.away_price ?? 999);
-            const favSide: Side = homeFav ? "HOME" : "AWAY";
-            const dogSide: Side = homeFav ? "AWAY" : "HOME";
+            // Home must be underdog at close/model snapshot
+            const homePrice = modelH2H.home_price;
+            const awayPrice = modelH2H.away_price;
 
-            if (dogSide !== "HOME") {
+            if (!homePrice || !awayPrice) {
               modelPass = false;
-              reason.fail = "not_home_underdog";
+              reason.fail = "missing_prices";
             } else {
-              const favPrice = favSide === "HOME" ? modelH2H.home_price : modelH2H.away_price;
-              if (!favPrice || favPrice < 1.55 || favPrice > 1.85) {
+              const homeIsDog = homePrice > awayPrice;
+              if (!homeIsDog) {
                 modelPass = false;
-                reason.fail = "fav_odds_band";
-              }
+                reason.fail = "not_home_underdog";
+              } else {
+                const favouritePrice = Math.min(homePrice, awayPrice);
+                reason.favourite_close_price = favouritePrice;
 
-              const favTeamId = favSide === "HOME" ? g.home_team_id : g.away_team_id;
-              const favStreak = await getWinStreakBeforeGame({
-                supabase,
-                season,
-                teamId: favTeamId,
-                gameStartIso: g.start_time_aet,
-              });
-              reason.fav_win_streak = favStreak;
-              if (favStreak < 2) {
-                modelPass = false;
-                reason.fail = "fav_streak";
-              }
+                // Favourite close band 1.55–1.85
+                if (favouritePrice < 1.55 || favouritePrice > 1.85) {
+                  modelPass = false;
+                  reason.fail = "fav_odds_band";
+                }
 
-              const favState = favSide === "HOME" ? homeState : awayState;
-              const dogState = favSide === "HOME" ? awayState : homeState;
-              const pctDiff = Math.abs(favState.percentage - dogState.percentage);
-              reason.pct_diff = Number(pctDiff.toFixed(2));
-              if (pctDiff >= 25) {
-                modelPass = false;
-                reason.fail = "pct_diff";
-              }
+                // Favourite win streak ≥ 2
+                const favSide: Side = homePrice < awayPrice ? "HOME" : "AWAY";
+                const favTeamId = favSide === "HOME" ? g.home_team_id : g.away_team_id;
 
-              reason.legs.push(
-                buildLegH2H({
-                  system_code,
-                  snapshot_type: modelSnap,
-                  side: "HOME",
-                  ref_price: modelH2H.home_price ?? null,
-                  exec_best_price: null,
-                  exec_best_book: null,
-                  ref_books_observed: modelH2H.ref_books_observed ?? [],
-                  exec_books_observed: modelH2H.exec_books_observed ?? [],
-                })
-              );
+                const favStreak = await getWinStreakBeforeGame({
+                  supabase,
+                  season,
+                  teamId: favTeamId,
+                  gameStartIso: g.start_time_aet,
+                });
+
+                reason.fav_win_streak = favStreak;
+                if (favStreak < 2) {
+                  modelPass = false;
+                  reason.fail = "fav_streak";
+                }
+
+                if (modelPass) {
+                  let stakeUnits = 1.0;
+                  reason.amplifiers = [];
+
+                  // Interstate boost
+                  const hs = (g.home_team as any)?.home_state ?? null;
+                  const as_ = (g.away_team as any)?.home_state ?? null;
+                  if (hs && as_ && hs !== as_) {
+                    stakeUnits += 0.5;
+                    reason.amplifiers.push("interstate");
+                  }
+
+                  // Tight favourite pocket 1.65–1.80
+                  if (favouritePrice >= 1.65 && favouritePrice <= 1.80) {
+                    stakeUnits += 0.5;
+                    reason.amplifiers.push("tight_favourite_pocket");
+                  }
+
+                  // CLV momentum confirmation OPEN -> T10 (rules snapshot)
+                  const openHome = openH2H.home_price;
+                  const closeHome = modelH2H.home_price;
+
+                  if (openHome && closeHome) {
+                    const shorten = (openHome - closeHome) / openHome;
+                    reason.open_to_t10_shorten = Number(shorten.toFixed(4));
+
+                    if (shorten >= 0.08) {
+                      stakeUnits += 1.0;
+                      reason.amplifiers.push("clv_momentum_8_plus");
+                    } else if (shorten >= 0.06) {
+                      stakeUnits += 0.5;
+                      reason.amplifiers.push("clv_momentum_6_8");
+                    }
+                  }
+
+                  // Early market agreement OPEN -> T30
+                  const t30H2H = execH2H;
+                  const t30Home = t30H2H?.home_price ?? null;
+
+                  if (openHome && t30Home) {
+                    const earlyShorten = (openHome - t30Home) / openHome;
+                    reason.open_to_t30_shorten = Number(earlyShorten.toFixed(4));
+
+                    if (earlyShorten >= 0.06) {
+                      stakeUnits += 0.5;
+                      reason.amplifiers.push("early_agreement_6_plus");
+                    } else if (earlyShorten >= 0.04) {
+                      stakeUnits += 0.25;
+                      reason.amplifiers.push("early_agreement_4_plus");
+                    }
+                  }
+
+                  if (stakeUnits > 2.5) stakeUnits = 2.5;
+                  reason.recommended_units = stakeUnits;
+
+                  // Primary leg: HOME H2H
+                  reason.legs.push(
+                    buildLegH2H({
+                      system_code,
+                      snapshot_type: modelSnap,
+                      side: "HOME",
+                      ref_price: modelH2H.home_price ?? null,
+                      exec_best_price: null,
+                      exec_best_book: null,
+                      ref_books_observed: modelH2H.ref_books_observed ?? [],
+                      exec_books_observed: modelH2H.exec_books_observed ?? [],
+                    })
+                  );
+
+                  // Overlay leg metadata only; actual signal engine remains single-leg for now.
+                  // Record overlay eligibility in reason_json for audit/reporting.
+                  if (openLine && modelLine) {
+                    const openHomeLine = openLine.home_line;
+                    const modelHomeLine = modelLine.home_line;
+
+                    if (openHomeLine !== null && modelHomeLine !== null) {
+                      const overlayClv = Number((modelHomeLine - openHomeLine).toFixed(2));
+                      reason.overlay = {
+                        type: "LINE",
+                        enabled: overlayClv > 0,
+                        side: "HOME",
+                        clv_points: overlayClv,
+                        clv_min: 0,
+                      };
+                    }
+                  }
+                }
+              }
             }
           }
         }

@@ -111,7 +111,10 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("PERS_SYS_ODDS_API_KEY");
     if (!apiKey) throw new Error("PERS_SYS_ODDS_API_KEY not set");
 
-    const bufferMinutes = snapshotType === "OPEN" ? 0 : 60;
+    const bufferMinutes =
+      snapshotType === "OPEN" || snapshotType === "CURRENT" || snapshotType === "T30" || snapshotType === "T10"
+        ? 0
+        : 60;
     const lookaheadDays = snapshotType === "OPEN" ? 10 : 7;
     const now = new Date();
 

@@ -918,7 +918,7 @@ Deno.serve(async (req) => {
                     type: "H2H",
                     enabled: true,
                     depends_on: "T30",
-                    side: "AWAY",
+                    side: fadeSide,
                     clv_min: 0.03,
                   };
                   reason.recommended_units = 1.0;

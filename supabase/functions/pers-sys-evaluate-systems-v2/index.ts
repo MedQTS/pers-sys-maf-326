@@ -1298,9 +1298,9 @@ Deno.serve(async (req) => {
           }
         }
 
-        // SYS_7 — Home Favourite Bounce Escalation
+        // SYS_7 — Home Favourite Bounce Escalation (HARD+)
         if (system_code === "SYS_7") {
-          if (!modelH2H || !homeState) {
+          if (!modelH2H || !openH2H || !homeState) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
@@ -1333,35 +1333,114 @@ Deno.serve(async (req) => {
             }
 
             if (modelPass) {
-              const lossLike = await getLossLikeStreakBeforeGame({
-                supabase,
-                season,
-                teamId: g.home_team_id,
-                gameStartIso: g.start_time_aet,
-                drawCountsAsLoss: true,
-              });
+              // Fetch last 3 completed games for the home team before this game
+              const { data: recentGames, error: recentErr } = await supabase
+                .from("pers_sys_games")
+                .select("id,start_time_aet,winner_team_id,loser_team_id,is_draw,status,home_team_id,away_team_id")
+                .eq("season", season)
+                .eq("status", "FT")
+                .lt("start_time_aet", g.start_time_aet)
+                .or(`home_team_id.eq.${g.home_team_id},away_team_id.eq.${g.home_team_id}`)
+                .order("start_time_aet", { ascending: false })
+                .limit(3);
 
-              let tier: "tier1" | "tier2" | "tier3" = "tier1";
-              if (lossLike >= 3) tier = "tier3";
-              else if (lossLike === 2) tier = "tier2";
+              if (recentErr || !recentGames || recentGames.length === 0) {
+                modelPass = false;
+                reason.fail = "missing_recent_games";
+              } else {
+                // Classify each recent game as WIN or LOSS (draw = LOSS)
+                const outcomes: ("WIN" | "LOSS")[] = [];
+                for (const pg of recentGames as any[]) {
+                  if (pg.is_draw) {
+                    outcomes.push("LOSS");
+                  } else if (pg.winner_team_id === g.home_team_id) {
+                    outcomes.push("WIN");
+                  } else {
+                    outcomes.push("LOSS");
+                  }
+                }
 
-              const units = tier === "tier3" ? 3.0 : tier === "tier2" ? 2.25 : 1.5;
+                const lost_last_1 = outcomes.length >= 1 && outcomes[0] === "LOSS";
+                const lost_2_of_last_3 = outcomes.filter(o => o === "LOSS").length >= 2;
+                const lost_2_straight = outcomes.length >= 2 && outcomes[0] === "LOSS" && outcomes[1] === "LOSS";
 
-              reason.tier = tier;
-              reason.recommended_units = units;
+                reason.lost_last_1 = lost_last_1;
+                reason.lost_2_of_last_3 = lost_2_of_last_3;
+                reason.lost_2_straight = lost_2_straight;
 
-              reason.legs.push(
-                buildLegH2H({
-                  system_code,
-                  snapshot_type: modelSnap,
-                  side: "HOME",
-                  ref_price: modelH2H.home_price ?? null,
-                  exec_best_price: null,
-                  exec_best_book: null,
-                  ref_books_observed: modelH2H.ref_books_observed ?? [],
-                  exec_books_observed: modelH2H.exec_books_observed ?? [],
-                })
-              );
+                let tier: "tier1" | "tier2" | "tier3";
+                let units: number;
+
+                if (lost_2_straight) {
+                  tier = "tier3";
+                  units = 3.0;
+                } else if (lost_2_of_last_3) {
+                  tier = "tier2";
+                  units = 2.25;
+                } else {
+                  tier = "tier1";
+                  units = 1.5;
+                }
+
+                reason.tier = tier;
+                reason.amplifiers = [];
+
+                // Amplifiers: OPEN -> T10 shortening (modelH2H is T10 for SYS_7)
+                const openHome = openH2H.home_price;
+                const modelHome = modelH2H.home_price;
+
+                if (openHome && modelHome) {
+                  const shorten = (openHome - modelHome) / openHome;
+                  reason.open_to_t10_shorten = Number(shorten.toFixed(4));
+
+                  if (shorten >= 0.08) {
+                    units += 1.0;
+                    reason.amplifiers.push("clv_momentum_8_plus");
+                  } else if (shorten >= 0.06) {
+                    units += 0.5;
+                    reason.amplifiers.push("clv_momentum_6_8");
+                  }
+
+                  // Amplifiers: OPEN -> T30 shortening (execH2H is T30 for SYS_7)
+                  const t30Home = execH2H?.home_price ?? null;
+
+                  if (t30Home) {
+                    const earlyShorten = (openHome - t30Home) / openHome;
+                    reason.open_to_t30_shorten = Number(earlyShorten.toFixed(4));
+
+                    if (earlyShorten >= 0.05) {
+                      units += 0.5;
+                      reason.amplifiers.push("early_agreement_5_plus");
+                    } else if (earlyShorten >= 0.03) {
+                      units += 0.25;
+                      reason.amplifiers.push("early_agreement_3_plus");
+                    }
+                  }
+
+                  // Penalty: soft momentum in tight favourite pocket
+                  if (homeOdds && homeOdds >= 1.65 && homeOdds <= 1.80 && shorten < 0.06) {
+                    units -= 0.25;
+                    reason.amplifiers.push("penalty_soft_momentum");
+                  }
+                }
+
+                // Cap
+                if (units > 4.0) units = 4.0;
+                reason.recommended_units = units;
+
+                reason.legs.push(
+                  buildLegH2H({
+                    system_code,
+                    snapshot_type: modelSnap,
+                    side: "HOME",
+                    ref_price: modelH2H.home_price ?? null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    ref_books_observed: modelH2H.ref_books_observed ?? [],
+                    exec_books_observed: modelH2H.exec_books_observed ?? [],
+                  })
+                );
+              }
             }
           }
         }

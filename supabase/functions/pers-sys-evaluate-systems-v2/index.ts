@@ -721,17 +721,32 @@ Deno.serve(async (req) => {
         // SYSTEM-SPECIFIC RULES
         // -------------------------
 
-        // SYS_1 — Dead Teams CLV Line
+        // ==============================
+        // SYS_1 — Dead Teams CLV Line Model (HARD+)
+        // ==============================
         if (system_code === "SYS_1") {
-          if (!homeState || !awayState || !openLine || !modelLine) {
+          // --- window check (rounds remaining 3–7) ---
+          const rc = roundCtxByRound[round];
+          if (!rc || typeof rc.points_8th !== "number") {
             modelPass = false;
-            reason.fail = "missing_model_data";
+            reason.fail = "missing_round_context";
           } else {
-            const rc = roundCtxByRound[round];
-            if (!rc || typeof rc.points_8th !== "number") {
+            const remaining = totalRounds - round + 1;
+            reason.remaining_rounds = remaining;
+
+            if (remaining < 3 || remaining > 7) {
               modelPass = false;
-              reason.fail = "missing_round_context";
+              reason.fail = "window";
+            }
+          }
+
+          // --- ladder rule ---
+          if (modelPass) {
+            if (!homeState || !awayState) {
+              modelPass = false;
+              reason.fail = "missing_ladder";
             } else {
+              const rc = roundCtxByRound[round];
               const homePts = premiershipPoints(homeState.wins, homeState.draws);
               const awayPts = premiershipPoints(awayState.wins, awayState.draws);
 
@@ -742,53 +757,96 @@ Deno.serve(async (req) => {
               const homeDead = homeBehind >= minBehind;
               const awayDead = awayBehind >= minBehind;
 
-              if ((homeDead && awayDead) || (!homeDead && !awayDead)) {
+              if (!homeDead && !awayDead) {
+                modelPass = false;
+                reason.fail = "dead_team_not_identified";
+              } else if (homeDead && awayDead) {
                 modelPass = false;
                 reason.fail = "dead_side_ambiguous";
               } else {
                 const deadSide: Side = homeDead ? "HOME" : "AWAY";
                 reason.dead_side = deadSide;
 
+                // opponent must be top-8
                 const oppPts = deadSide === "HOME" ? awayPts : homePts;
                 if (oppPts < rc.points_8th) {
                   modelPass = false;
                   reason.fail = "opponent_not_top8";
                 }
 
-                if (sys.clv_required) {
-                  const openPrice = deadSide === "HOME" ? openLine.home_line_price : openLine.away_line_price;
-                  const closePrice = deadSide === "HOME" ? modelLine.home_line_price : modelLine.away_line_price;
-
-                  if (!openPrice || !closePrice) {
+                if (modelPass) {
+                  // --- CLV check (line-based, >= 3%) ---
+                  if (!openLine || !modelLine) {
                     modelPass = false;
-                    reason.fail = "missing_clv_prices";
+                    reason.fail = "missing_model_data";
                   } else {
-                    const clv = relCLV(openPrice, closePrice);
-                    reason.clv_rel = Number(clv.toFixed(4));
-                    const min = Number(sys.clv_min ?? 0.03);
-                    if (clv <= min) {
+                    const openPrice = deadSide === "HOME" ? openLine.home_line_price : openLine.away_line_price;
+                    const closePrice = deadSide === "HOME" ? modelLine.home_line_price : modelLine.away_line_price;
+
+                    if (!openPrice || !closePrice) {
                       modelPass = false;
-                      reason.fail = "clv_fail";
+                      reason.fail = "missing_clv_prices";
+                    } else {
+                      const clv = relCLV(openPrice, closePrice);
+                      reason.clv_rel = Number(clv.toFixed(4));
+                      if (clv < 0.03) {
+                        modelPass = false;
+                        reason.fail = "clv_fail";
+                      }
                     }
                   }
                 }
 
-                const lineAtModel = deadSide === "HOME" ? modelLine.home_line : modelLine.away_line;
-                const refPriceModel = deadSide === "HOME" ? modelLine.home_line_price : modelLine.away_line_price;
+                if (modelPass && openLine && modelLine) {
+                  // --- base stake ---
+                  let stake = 1.0;
 
-                reason.legs.push(
-                  buildLegLine({
-                    system_code,
-                    snapshot_type: modelSnap,
-                    side: deadSide,
-                    line_at_bet: lineAtModel ?? null,
-                    ref_price: refPriceModel ?? null,
-                    exec_best_price: null,
-                    exec_best_book: null,
-                    ref_books_observed: modelLine.ref_books_observed ?? [],
-                    exec_books_observed: modelLine.exec_books_observed ?? [],
-                  })
-                );
+                  // --- amplifier 1: interstate advantage ---
+                  const homeTeamState = (g.home_team as any)?.home_state ?? null;
+                  const awayTeamState = (g.away_team as any)?.home_state ?? null;
+                  const v = g.venue ?? null;
+                  const venueState = v ? venueStateByVenue[v] : null;
+
+                  if (homeTeamState && awayTeamState && homeTeamState !== awayTeamState && venueState) {
+                    const deadIsHome = deadSide === "HOME";
+                    if (
+                      (deadIsHome && homeTeamState === venueState) ||
+                      (!deadIsHome && awayTeamState === venueState)
+                    ) {
+                      stake += 0.5;
+                      reason.amplifiers = reason.amplifiers || [];
+                      reason.amplifiers.push("home_state_interstate");
+                    }
+                  }
+
+                  // --- amplifier 2: large spread ---
+                  const lineAtModel = deadSide === "HOME" ? modelLine.home_line : modelLine.away_line;
+                  if (lineAtModel !== null && Math.abs(lineAtModel) >= 18) {
+                    stake += 0.5;
+                    reason.amplifiers = reason.amplifiers || [];
+                    reason.amplifiers.push("large_spread_floor");
+                  }
+
+                  // --- cap stake ---
+                  if (stake > 2.0) stake = 2.0;
+                  reason.recommended_units = stake;
+
+                  const refPriceModel = deadSide === "HOME" ? modelLine.home_line_price : modelLine.away_line_price;
+
+                  reason.legs.push(
+                    buildLegLine({
+                      system_code,
+                      snapshot_type: modelSnap,
+                      side: deadSide,
+                      line_at_bet: lineAtModel ?? null,
+                      ref_price: refPriceModel ?? null,
+                      exec_best_price: null,
+                      exec_best_book: null,
+                      ref_books_observed: modelLine.ref_books_observed ?? [],
+                      exec_books_observed: modelLine.exec_books_observed ?? [],
+                    })
+                  );
+                }
               }
             }
           }

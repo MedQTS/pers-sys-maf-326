@@ -111,14 +111,36 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get("PERS_SYS_ODDS_API_KEY");
     if (!apiKey) throw new Error("PERS_SYS_ODDS_API_KEY not set");
 
-    const bufferMinutes = 0;
-    const lookaheadDays = snapshotType === "OPEN" ? 10 : 7;
     const now = new Date();
 
-    const cutoffStart = new Date(now.getTime() + bufferMinutes * 60 * 1000);
-    const cutoffEnd = new Date(
-      now.getTime() + lookaheadDays * 24 * 60 * 60 * 1000
-    );
+    let cutoffStart: Date;
+    let cutoffEnd: Date;
+
+    if (snapshotType === "OPEN") {
+      // Broad future window for capturing opening markets
+      cutoffStart = new Date(now.getTime());
+      cutoffEnd = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
+    } else if (snapshotType === "CURRENT") {
+      // Broad monitoring window
+      cutoffStart = new Date(now.getTime());
+      cutoffEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    } else if (snapshotType === "T60") {
+      // Target games roughly 60 minutes before bounce
+      cutoffStart = new Date(now.getTime() + 45 * 60 * 1000);
+      cutoffEnd = new Date(now.getTime() + 75 * 60 * 1000);
+    } else if (snapshotType === "T30") {
+      // Target games roughly 30 minutes before bounce
+      cutoffStart = new Date(now.getTime() + 15 * 60 * 1000);
+      cutoffEnd = new Date(now.getTime() + 45 * 60 * 1000);
+    } else if (snapshotType === "T10") {
+      // Target games just before bounce
+      cutoffStart = new Date(now.getTime());
+      cutoffEnd = new Date(now.getTime() + 20 * 60 * 1000);
+    } else {
+      // Fallback safety
+      cutoffStart = new Date(now.getTime());
+      cutoffEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    }
 
     const { data: eligibleGames } = await supabase
       .from("pers_sys_games")

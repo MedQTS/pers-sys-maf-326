@@ -656,7 +656,7 @@ Deno.serve(async (req) => {
           ) return "OVERLAY";
 
           return "MODEL";
-        }
+        };
 
         function isStructuralFail(code: string | undefined | null): boolean {
           const c = String(code || "");

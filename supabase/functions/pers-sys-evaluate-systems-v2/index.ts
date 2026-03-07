@@ -1039,48 +1039,91 @@ Deno.serve(async (req) => {
           }
         }
 
-        // SYS_5 — Line Dog (dog line; CLV in points is OPEN->modelSnap)
+        // SYS_5 — Line Dog (HARD+)
         if (system_code === "SYS_5") {
           if (!openLine || !modelLine || !modelH2H) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
+            // Determine dog from near-close H2H prices
             const homeDog = (modelH2H.home_price ?? 0) > (modelH2H.away_price ?? 0);
             const dogSide: Side = homeDog ? "HOME" : "AWAY";
             const dogCloseH2H = dogSide === "HOME" ? modelH2H.home_price : modelH2H.away_price;
 
+            reason.dog_side = dogSide;
+            reason.dog_close_h2h = dogCloseH2H ?? null;
+
+            // H2H close band: 1.95 ≤ dog < 2.85
             if (!dogCloseH2H || dogCloseH2H < 1.95 || dogCloseH2H >= 2.85) {
               modelPass = false;
               reason.fail = "h2h_band";
             }
 
+            // Dog must be receiving points at the model snapshot
             const dogModelLine = dogSide === "HOME" ? modelLine.home_line : modelLine.away_line;
             if (!(dogModelLine !== null && dogModelLine > 0)) {
               modelPass = false;
               reason.fail = "line_not_positive";
             }
 
+            // Spread CLV in points: modelSnap - OPEN, must be ≥ +1.5 points
             const openDogLine = dogSide === "HOME" ? openLine.home_line : openLine.away_line;
             const modelDogLine = dogSide === "HOME" ? modelLine.home_line : modelLine.away_line;
+
+            let clvPts: number | null = null;
             if (openDogLine === null || modelDogLine === null) {
               modelPass = false;
               reason.fail = "missing_lines";
             } else {
-              const clvPts = Number((modelDogLine - openDogLine).toFixed(2));
+              clvPts = Number((modelDogLine - openDogLine).toFixed(2));
               reason.line_clv_points = clvPts;
-              if (clvPts <= 0) {
+              if (clvPts < 1.5) {
                 modelPass = false;
                 reason.fail = "line_clv";
               }
             }
 
             if (modelPass) {
+              // Base stake: 1.0%
+              let stakePct = 1.0;
+              reason.amplifiers = [];
+
+              // Amplifier 1 — Strong CLV ≥ 3.0 points
+              if (clvPts !== null && clvPts >= 3.0) {
+                stakePct += 0.5;
+                reason.amplifiers.push("strong_clv");
+              }
+
+              // Amplifier 2 — Home Dog
+              if (dogSide === "HOME") {
+                stakePct += 0.5;
+                reason.amplifiers.push("home_dog");
+              }
+
+              // Amplifier 3 — Interstate Travel
+              const hs = (g.home_team as any)?.home_state ?? null;
+              const as_ = (g.away_team as any)?.home_state ?? null;
+              if (hs && as_ && hs !== as_) {
+                stakePct += 0.25;
+                reason.amplifiers.push("interstate_travel");
+              }
+
+              // Amplifier 4 — Large Spread (dog receiving ≥ 18 points)
+              if (dogModelLine !== null && dogModelLine >= 18) {
+                stakePct += 0.5;
+                reason.amplifiers.push("large_spread");
+              }
+
+              // Cap at 2.5%
+              if (stakePct > 2.5) stakePct = 2.5;
+              reason.recommended_units = stakePct;
+
               reason.legs.push(
                 buildLegLine({
                   system_code,
                   snapshot_type: modelSnap,
                   side: dogSide,
-                  line_at_bet: dogSide === "HOME" ? modelLine.home_line : modelLine.away_line,
+                  line_at_bet: dogModelLine ?? null,
                   ref_price: dogSide === "HOME" ? modelLine.home_line_price : modelLine.away_line_price,
                   exec_best_price: null,
                   exec_best_book: null,

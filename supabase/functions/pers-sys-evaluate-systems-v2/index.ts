@@ -713,7 +713,7 @@ Deno.serve(async (req) => {
           }
 
           return false;
-        }
+        };
 
         // default state
         let modelPass = true;

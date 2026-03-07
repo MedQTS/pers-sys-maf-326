@@ -1801,8 +1801,12 @@ Deno.serve(async (req) => {
                   const overlayStatus: Status = t30Has ? "READY" : "PENDING";
 
                   // Exec best fields are drawn from the T30 snapshot row.
-                  const overlayExecBestPrice = t30Has ? t30Snap.exec_best_away_price : null;
-                  const overlayExecBestBook = t30Has ? t30Snap.exec_best_away_book : null;
+                  const overlayExecBestPrice = t30Has
+                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_price : t30Snap.exec_best_away_price)
+                    : null;
+                  const overlayExecBestBook = t30Has
+                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_book : t30Snap.exec_best_away_book)
+                    : null;
 
                   const overlayReason: Record<string, any> = {
                     ...reason,

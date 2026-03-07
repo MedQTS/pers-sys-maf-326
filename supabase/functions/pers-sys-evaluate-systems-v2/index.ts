@@ -1625,7 +1625,7 @@ Deno.serve(async (req) => {
           dominatedByGame[g.id] = system_code;
         }
 
-        // --- Overlay child signal (SYS_2: AWAY H2H at T30 if CLV > threshold) ---
+        // --- Overlay child signal (SYS_2: fade-side H2H at T30 if CLV > threshold) ---
         if (signalStatus !== "BLOCKED")
           try {
             const overlayEnabled = !!reason?.overlay?.enabled;

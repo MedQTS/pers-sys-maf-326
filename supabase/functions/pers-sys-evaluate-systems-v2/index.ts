@@ -634,7 +634,7 @@ Deno.serve(async (req) => {
           evaluation_version: sys.evaluation_version ?? null,
         };
 
-        function classifyFailStage(code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" {
+        const classifyFailStage = (code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" => {
           const c = String(code || "");
           if (
             c.startsWith("missing_") ||

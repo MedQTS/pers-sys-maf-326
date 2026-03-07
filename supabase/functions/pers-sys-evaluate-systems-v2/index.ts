@@ -1738,16 +1738,18 @@ Deno.serve(async (req) => {
                     reason_json: placeholderReason,
                   });
               } else {
-                const openAway = openSnap.away_price;
-                const t30Away = t30Snap.away_price;
+                const openOverlayPrice =
+                  overlaySide === "HOME" ? openSnap.home_price : openSnap.away_price;
+                const t30OverlayPrice =
+                  overlaySide === "HOME" ? t30Snap.home_price : t30Snap.away_price;
 
-                // Compute CLV(open->T30) for AWAY; must be positive and exceed threshold.
+                // Compute CLV(open->T30) for fade side; must be positive and exceed threshold.
                 const clvMin = 0.03;
                 let clvOk = false;
                 let clvRel: number | null = null;
 
-                if (openAway && t30Away) {
-                  clvRel = relCLV(openAway, t30Away);
+                if (openOverlayPrice && t30OverlayPrice) {
+                  clvRel = relCLV(openOverlayPrice, t30OverlayPrice);
                   clvOk = clvRel > clvMin;
                 }
 

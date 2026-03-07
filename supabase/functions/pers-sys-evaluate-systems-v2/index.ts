@@ -918,7 +918,7 @@ Deno.serve(async (req) => {
                     type: "H2H",
                     enabled: true,
                     depends_on: "T30",
-                    side: "AWAY",
+                    side: fadeSide,
                     clv_min: 0.03,
                   };
                   reason.recommended_units = 1.0;
@@ -1625,19 +1625,20 @@ Deno.serve(async (req) => {
           dominatedByGame[g.id] = system_code;
         }
 
-        // --- Overlay child signal (SYS_2: AWAY H2H at T30 if CLV > threshold) ---
+        // --- Overlay child signal (SYS_2: fade-side H2H at T30 if CLV > threshold) ---
         if (signalStatus !== "BLOCKED")
           try {
             const overlayEnabled = !!reason?.overlay?.enabled;
             const primaryReady = signalStatus === "READY";
 
             // Only SYS_2 has the locked overlay rule:
-            // "H2H overlay only if Away + CLV(open->T30) > 0.03"
+            // "H2H overlay on fade side + CLV(open->T30) > 0.03"
             if (overlayEnabled && primaryReady && system_code === "SYS_2") {
               const overlayExecSnap: "T30" = "T30";
 
-              // We only ever overlay the AWAY side (locked spec).
-              const overlaySide: Side = "AWAY";
+              // Overlay side is the fade side, derived from the parent signal's reason metadata.
+              const overlaySide: Side =
+                reason?.overlay?.side === "HOME" ? "HOME" : "AWAY";
 
               // Need OPEN + T30 H2H snapshots to evaluate CLV and to fill exec_best_*
               const openSnap = openH2H;
@@ -1737,16 +1738,18 @@ Deno.serve(async (req) => {
                     reason_json: placeholderReason,
                   });
               } else {
-                const openAway = openSnap.away_price;
-                const t30Away = t30Snap.away_price;
+                const openOverlayPrice =
+                  overlaySide === "HOME" ? openSnap.home_price : openSnap.away_price;
+                const t30OverlayPrice =
+                  overlaySide === "HOME" ? t30Snap.home_price : t30Snap.away_price;
 
-                // Compute CLV(open->T30) for AWAY; must be positive and exceed threshold.
+                // Compute CLV(open->T30) for fade side; must be positive and exceed threshold.
                 const clvMin = 0.03;
                 let clvOk = false;
                 let clvRel: number | null = null;
 
-                if (openAway && t30Away) {
-                  clvRel = relCLV(openAway, t30Away);
+                if (openOverlayPrice && t30OverlayPrice) {
+                  clvRel = relCLV(openOverlayPrice, t30OverlayPrice);
                   clvOk = clvRel > clvMin;
                 }
 
@@ -1798,8 +1801,12 @@ Deno.serve(async (req) => {
                   const overlayStatus: Status = t30Has ? "READY" : "PENDING";
 
                   // Exec best fields are drawn from the T30 snapshot row.
-                  const overlayExecBestPrice = t30Has ? t30Snap.exec_best_away_price : null;
-                  const overlayExecBestBook = t30Has ? t30Snap.exec_best_away_book : null;
+                  const overlayExecBestPrice = t30Has
+                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_price : t30Snap.exec_best_away_price)
+                    : null;
+                  const overlayExecBestBook = t30Has
+                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_book : t30Snap.exec_best_away_book)
+                    : null;
 
                   const overlayReason: Record<string, any> = {
                     ...reason,

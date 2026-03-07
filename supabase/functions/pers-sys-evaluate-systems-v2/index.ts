@@ -944,8 +944,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          if (modelPass && openH2H && modelH2H && homeState && awayState) {
-          } else {
+          if (modelPass) {
             // Home must be underdog at close/model snapshot
             const homePrice = modelH2H.home_price;
             const awayPrice = modelH2H.away_price;

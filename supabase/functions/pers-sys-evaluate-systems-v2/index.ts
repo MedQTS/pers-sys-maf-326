@@ -1214,32 +1214,28 @@ Deno.serve(async (req) => {
           }
         }
 
-        // SYS_6 — Dog Mid-Season (HARD+)
+        // SYS_6 — Dog Mid-Season (HARD+) — AWAY underdog only
         if (system_code === "SYS_6") {
           if (!openH2H || !modelH2H) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
+            const dogSide: Side = "AWAY";
 
-            // Determine dog
-            const homeDog = (modelH2H.home_price ?? 0) > (modelH2H.away_price ?? 0);
-            const dogSide: Side = homeDog ? "HOME" : "AWAY";
-
-            const openDogPrice = dogSide === "HOME"
-              ? openH2H.home_price
-              : openH2H.away_price;
-
-            const modelDogPrice = dogSide === "HOME"
-              ? modelH2H.home_price
-              : modelH2H.away_price;
+            const openDogPrice = openH2H.away_price;
+            const modelDogPrice = modelH2H.away_price;
 
             if (!openDogPrice || !modelDogPrice) {
               modelPass = false;
               reason.fail = "missing_prices";
+            } else if (openDogPrice < 3.5 || openDogPrice > 7.0) {
+              modelPass = false;
+              reason.fail = "open_band";
+              reason.open_away_price = openDogPrice;
             } else {
-
               const clv = Number((modelDogPrice - openDogPrice).toFixed(3));
               reason.h2h_clv = clv;
+              reason.open_away_price = openDogPrice;
 
               if (clv < 0.01) {
                 modelPass = false;
@@ -1247,7 +1243,6 @@ Deno.serve(async (req) => {
               }
 
               if (modelPass) {
-
                 let stakePct = 1.5;
 
                 if (clv >= 0.03) stakePct = 2.0;
@@ -1258,11 +1253,9 @@ Deno.serve(async (req) => {
                 // Amplifier tracking
                 reason.amplifiers = [];
 
-                // Large spread amplifier
+                // Large spread amplifier (AWAY line)
                 if (modelLine) {
-                  const dogLine = dogSide === "HOME"
-                    ? modelLine.home_line
-                    : modelLine.away_line;
+                  const dogLine = modelLine.away_line;
 
                   if (dogLine !== null && dogLine >= 18) {
                     stakePct += 0.25;
@@ -1270,11 +1263,9 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                // Early agreement amplifier (T30 CLV)
+                // Early agreement amplifier (T30 CLV, AWAY price)
                 if (execH2H) {
-                  const execDogPrice = dogSide === "HOME"
-                    ? execH2H.home_price
-                    : execH2H.away_price;
+                  const execDogPrice = execH2H.away_price;
 
                   if (execDogPrice && openDogPrice) {
                     const t30Clv = execDogPrice - openDogPrice;
@@ -1294,7 +1285,7 @@ Deno.serve(async (req) => {
                   buildLegH2H({
                     system_code,
                     snapshot_type: modelSnap,
-                    side: dogSide,
+                    side: "AWAY",
                     ref_price: modelDogPrice,
                     exec_best_price: null,
                     exec_best_book: null,

@@ -1694,7 +1694,7 @@ Deno.serve(async (req) => {
                       exec_best_book: null,
                       recommended_units: null,
                       reason_json: {
-                        ...overlayReason,
+                        ...placeholderReason,
                         status: "FAIL",
                         fail: reason.fail ?? "structural_overlay_blocked",
                       },

@@ -1393,7 +1393,7 @@ Deno.serve(async (req) => {
         // --- Overlay child signal (SYS_2: AWAY H2H at T30 if CLV > threshold) ---
         if (signalStatus !== "BLOCKED")
           try {
-            const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
+            const overlayEnabled = !!reason?.overlay?.enabled;
             const primaryReady = signalStatus === "READY";
 
             // Only SYS_2 has the locked overlay rule:

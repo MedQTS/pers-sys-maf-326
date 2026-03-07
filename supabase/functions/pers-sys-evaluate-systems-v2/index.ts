@@ -942,9 +942,8 @@ Deno.serve(async (req) => {
               reason.fail = "excluded_state";
               reason.venue_state = venueState;
             }
-          }
 
-          if (modelPass) {
+            if (modelPass) {
             // Home must be underdog at close/model snapshot
             const homePrice = modelH2H.home_price;
             const awayPrice = modelH2H.away_price;

@@ -697,6 +697,7 @@ Deno.serve(async (req) => {
             c === "pct_diff" ||
             c === "open_band" ||
             c === "odds_band" ||
+            c === "excluded_state" ||
             c === "not_lost_prior"
           ) {
             return true;
@@ -934,6 +935,16 @@ Deno.serve(async (req) => {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {
+            // Venue-state exclusion: ACT, NT, TAS
+            const v = g.venue ?? null;
+            const venueState = v ? venueStateByVenue[v] : null;
+            if (venueState && ["ACT", "NT", "TAS"].includes(venueState)) {
+              modelPass = false;
+              reason.fail = "excluded_state";
+              reason.venue_state = venueState;
+            }
+
+            if (modelPass) {
             // Home must be underdog at close/model snapshot
             const homePrice = modelH2H.home_price;
             const awayPrice = modelH2H.away_price;

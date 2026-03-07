@@ -697,6 +697,7 @@ Deno.serve(async (req) => {
             c === "pct_diff" ||
             c === "open_band" ||
             c === "odds_band" ||
+            c === "excluded_state" ||
             c === "not_lost_prior"
           ) {
             return true;

@@ -914,7 +914,14 @@ Deno.serve(async (req) => {
                     })
                   );
 
-                  reason.overlay = { type: "H2H", enabled: true, depends_on: "T30" };
+                  reason.overlay = {
+                    type: "H2H",
+                    enabled: true,
+                    depends_on: "T30",
+                    side: "AWAY",
+                    clv_min: 0.03,
+                  };
+                  reason.recommended_units = 1.0;
                 }
               }
             }
@@ -1386,7 +1393,7 @@ Deno.serve(async (req) => {
         // --- Overlay child signal (SYS_2: AWAY H2H at T30 if CLV > threshold) ---
         if (signalStatus !== "BLOCKED")
           try {
-            const overlayEnabled = !!reason?.overlay_config?.overlay_h2h;
+            const overlayEnabled = !!reason?.overlay?.enabled;
             const primaryReady = signalStatus === "READY";
 
             // Only SYS_2 has the locked overlay rule:
@@ -1579,6 +1586,7 @@ Deno.serve(async (req) => {
                   } else {
                     // Ensure we don't leave stale fail markers once READY
                     delete overlayReason.fail;
+                    overlayReason.recommended_units = 0.4;
                   }
 
                   // Upsert overlay row using the same conflict key pattern (system_code,game_id,execution_snapshot,leg_type,side)
@@ -1599,7 +1607,7 @@ Deno.serve(async (req) => {
                       ref_price: null,
                       exec_best_price: overlayExecBestPrice,
                       exec_best_book: overlayExecBestBook,
-                      recommended_units: null,
+                      recommended_units: overlayStatus === "READY" ? 0.4 : null,
                       reason_json: overlayReason,
                       evaluated_at: new Date().toISOString(),
                       updated_at: new Date().toISOString(),
@@ -1625,7 +1633,7 @@ Deno.serve(async (req) => {
                     ref_price: null,
                     exec_best_price: overlayExecBestPrice,
                     exec_best_book: overlayExecBestBook,
-                    recommended_units: null,
+                    recommended_units: overlayStatus === "READY" ? 0.4 : null,
                     reason_json: overlayReason,
                   });
                 }

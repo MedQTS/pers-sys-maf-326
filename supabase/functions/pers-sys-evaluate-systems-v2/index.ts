@@ -914,7 +914,14 @@ Deno.serve(async (req) => {
                     })
                   );
 
-                  reason.overlay = { type: "H2H", enabled: true, depends_on: "T30" };
+                  reason.overlay = {
+                    type: "H2H",
+                    enabled: true,
+                    depends_on: "T30",
+                    side: "AWAY",
+                    clv_min: 0.03,
+                  };
+                  reason.recommended_units = 1.0;
                 }
               }
             }

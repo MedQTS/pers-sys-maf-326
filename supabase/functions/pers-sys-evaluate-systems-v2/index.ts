@@ -1632,12 +1632,13 @@ Deno.serve(async (req) => {
             const primaryReady = signalStatus === "READY";
 
             // Only SYS_2 has the locked overlay rule:
-            // "H2H overlay only if Away + CLV(open->T30) > 0.03"
+            // "H2H overlay on fade side + CLV(open->T30) > 0.03"
             if (overlayEnabled && primaryReady && system_code === "SYS_2") {
               const overlayExecSnap: "T30" = "T30";
 
-              // We only ever overlay the AWAY side (locked spec).
-              const overlaySide: Side = "AWAY";
+              // Overlay side is the fade side, derived from the parent signal's reason metadata.
+              const overlaySide: Side =
+                reason?.overlay?.side === "HOME" ? "HOME" : "AWAY";
 
               // Need OPEN + T30 H2H snapshots to evaluate CLV and to fill exec_best_*
               const openSnap = openH2H;

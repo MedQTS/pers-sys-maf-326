@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
     }
 
     let settled = 0;
+    let ledgerWritten = 0;
 
     for (const bet of unsettledBets) {
       const game = bet.game as any;
@@ -73,11 +74,46 @@ Deno.serve(async (req) => {
         .update({ result, profit_units: profitUnits, status: "SETTLED" })
         .eq("id", bet.id);
 
-      if (!error) settled++;
+      if (error) continue;
+      settled++;
+
+      // Ledger insert (idempotent)
+      const { data: existingLedger } = await supabase
+        .from("pers_sys_ledger")
+        .select("id")
+        .eq("ref_id", bet.id)
+        .eq("event_type", "SETTLEMENT")
+        .limit(1);
+
+      if (existingLedger && existingLedger.length > 0) continue;
+
+      let ledgerAmount: number;
+      if (result === "WIN") {
+        ledgerAmount = bet.stake_amount * (bet.price - 1);
+      } else if (result === "LOSS") {
+        ledgerAmount = -bet.stake_amount;
+      } else {
+        ledgerAmount = 0;
+      }
+      ledgerAmount = Number(ledgerAmount.toFixed(2));
+
+      const note = `${bet.system_code} ${bet.leg_type} ${bet.side} ${result}`;
+
+      const { error: ledgerError } = await supabase
+        .from("pers_sys_ledger")
+        .insert({
+          season_id: game.season,
+          event_type: "SETTLEMENT",
+          amount: ledgerAmount,
+          note,
+          ref_id: bet.id,
+        });
+
+      if (!ledgerError) ledgerWritten++;
     }
 
     return new Response(
-      JSON.stringify({ ok: true, settled }),
+      JSON.stringify({ ok: true, settled, ledger_written: ledgerWritten }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

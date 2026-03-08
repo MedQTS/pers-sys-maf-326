@@ -21,8 +21,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/runner" replace />} />
           <Route path="/runner" element={<Dashboard />} />
-          <Route path="/runner/week" element={<WeekView />} />
-          <Route path="/runner/week-v2" element={<WeekView_v2 />} />
+          <Route path="/runner/week" element={<WeekView_v2 />} />
           <Route path="/runner/game/:id" element={<GameDetail />} />
           <Route path="/runner/bets" element={<BetsPage />} />
           <Route path="/runner/performance" element={<PerformancePage />} />

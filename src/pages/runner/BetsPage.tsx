@@ -133,6 +133,7 @@ export default function BetsPage() {
                 <SelectContent>
                   {systems.map((s) => (
                     <SelectItem key={s.system_code} value={s.system_code}>{s.system_code}</SelectItem>
+
                   ))}
                 </SelectContent>
               </Select>

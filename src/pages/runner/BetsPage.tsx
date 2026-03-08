@@ -45,7 +45,7 @@ export default function BetsPage() {
         .eq("status", "SCHEDULED")
         .order("start_time_aet")
         .limit(50),
-      supabase.from("pers_sys_systems").select("system_code, name").eq("active", true),
+      supabase.from("pers_sys_systems_v2").select("system_code, system_name").eq("active", true),
     ]);
 
     setBets(betsRes.data || []);

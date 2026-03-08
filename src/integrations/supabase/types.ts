@@ -84,7 +84,7 @@ export type Database = {
             foreignKeyName: "pers_sys_bets_system_code_fkey"
             columns: ["system_code"]
             isOneToOne: false
-            referencedRelation: "pers_sys_systems"
+            referencedRelation: "pers_sys_systems_v2"
             referencedColumns: ["system_code"]
           },
         ]
@@ -366,23 +366,33 @@ export type Database = {
       pers_sys_season_meta: {
         Row: {
           created_at: string
+          gf_runner_up_team_id: string | null
           gf_winner_team_id: string
           season: number
           updated_at: string
         }
         Insert: {
           created_at?: string
+          gf_runner_up_team_id?: string | null
           gf_winner_team_id: string
           season: number
           updated_at?: string
         }
         Update: {
           created_at?: string
+          gf_runner_up_team_id?: string | null
           gf_winner_team_id?: string
           season?: number
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pers_sys_season_meta_gf_runner_up_team_id_fkey"
+            columns: ["gf_runner_up_team_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_teams"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pers_sys_season_meta_gf_winner_team_id_fkey"
             columns: ["gf_winner_team_id"]
@@ -648,10 +658,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "pers_sys_system_priority_system_code_fk"
+            foreignKeyName: "pers_sys_system_priority_system_code_fkey"
             columns: ["system_code"]
             isOneToOne: true
-            referencedRelation: "pers_sys_systems"
+            referencedRelation: "pers_sys_systems_v2"
             referencedColumns: ["system_code"]
           },
         ]

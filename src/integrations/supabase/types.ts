@@ -932,6 +932,7 @@ export type Database = {
           id: string
           oddsapi_name: string | null
           squiggle_name: string | null
+          squiggle_team_id: number | null
           updated_at: string
         }
         Insert: {
@@ -942,6 +943,7 @@ export type Database = {
           id?: string
           oddsapi_name?: string | null
           squiggle_name?: string | null
+          squiggle_team_id?: number | null
           updated_at?: string
         }
         Update: {
@@ -952,6 +954,7 @@ export type Database = {
           id?: string
           oddsapi_name?: string | null
           squiggle_name?: string | null
+          squiggle_team_id?: number | null
           updated_at?: string
         }
         Relationships: []

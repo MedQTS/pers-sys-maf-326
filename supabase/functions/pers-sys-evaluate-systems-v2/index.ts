@@ -1706,12 +1706,17 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // dominance: if a dominating system already qualified on this match, block others
+        // dominance: only apply side/line collision blocking to systems in the collision queue
+        const currentInQueue = isInCollisionQueue(system_code, primaryMarket);
         const blocker = dominatedByGame[g.id];
-        if (blocker && blocker !== system_code) {
+        if (blocker && blocker !== system_code && currentInQueue) {
           signalStatus = "BLOCKED";
           reason.fail = `blocked_by_${blocker}`;
           reason.blocked_by = blocker;
+          const blockerPri = priByCode.get(blocker);
+          if (blockerPri?.collision_rank != null) {
+            reason.blocked_by_collision_rank = blockerPri.collision_rank;
+          }
 
           // execution fields should not be actionable when blocked
           execBestBook = null;

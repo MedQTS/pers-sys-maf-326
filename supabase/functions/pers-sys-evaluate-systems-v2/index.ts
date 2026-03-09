@@ -299,6 +299,7 @@ async function getLossLikeStreakBeforeGame(args: {
 function hasMarketData(s: SnapshotRow | null, market: MarketType) {
   if (!s) return false;
   if (market === "H2H") return !!(s.home_price && s.away_price);
+  if (market === "TOTALS") return s.total_line !== null && !!(s.over_price && s.under_price);
   return s.home_line !== null && s.away_line !== null && !!(s.home_line_price && s.away_line_price);
 }
 

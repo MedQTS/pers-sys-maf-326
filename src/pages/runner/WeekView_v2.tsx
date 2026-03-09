@@ -46,6 +46,24 @@ function safeJson(x: any) {
   try { return JSON.parse(x); } catch { return null; }
 }
 
+type StakePreviewRow = {
+  ok: boolean;
+  status?: string | null;
+  game_id?: string;
+  system_code?: string;
+  leg_type?: string | null;
+  side?: string | null;
+  line_at_bet?: number | null;
+  snapshot_type?: string | null;
+  price?: number | null;
+  book?: string | null;
+  units?: number | null;
+  stake_amount?: number | null;
+  bankroll_snapshot?: number | null;
+  one_u_pct?: number | null;
+  error?: string | null;
+};
+
 function fmtLine(n: number | null) {
   if (n == null) return "";
   return `${n > 0 ? "+" : ""}${n}`;
@@ -120,6 +138,7 @@ export default function WeekView_v2() {
   const [unsettledByGame, setUnsettledByGame] = useState<Record<string, boolean>>({});
   const [openBets, setOpenBets] = useState<BetRow[]>([]);
   const [showPending, setShowPending] = useState(true);
+  const [stakePreviewBySignal, setStakePreviewBySignal] = useState<Record<string, StakePreviewRow>>({});
 
   useEffect(() => { loadData(); }, []);
 
@@ -164,6 +183,45 @@ export default function WeekView_v2() {
 
       if (sigErr) throw sigErr;
       setSignalsAll((sigs as any) || []);
+
+      // Compute stake previews for READY signals
+      const readySigs = ((sigs as SignalV2Row[]) || []).filter(
+        (s) => s.signal_status === "READY" || (s.pass === true && !s.signal_status)
+      );
+      if (readySigs.length > 0) {
+        const previewResults = await Promise.all(
+          readySigs.map(async (s) => {
+            try {
+              const r = safeJson(s.reason_json) || {};
+              const payload = {
+                p_game_id: s.game_id,
+                p_system_code: s.system_code,
+                p_leg_type: s.leg_type,
+                p_side: s.side,
+                p_line_at_bet: s.line_at_bet ?? null,
+                p_exec_best_price: s.exec_best_price ?? null,
+                p_exec_best_book: s.exec_best_book ?? null,
+                p_ref_price: s.ref_price ?? null,
+                p_units: s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null,
+                p_snapshot_type: s.execution_snapshot ?? s.model_snapshot ?? null,
+              };
+              const { data } = await supabase.rpc("preview_leg_stake", payload);
+              const d = data as any;
+              if (d?.ok === true) return { id: s.id, preview: d as StakePreviewRow };
+              return null;
+            } catch {
+              return null;
+            }
+          })
+        );
+        const map: Record<string, StakePreviewRow> = {};
+        for (const r of previewResults) {
+          if (r) map[r.id] = r.preview;
+        }
+        setStakePreviewBySignal(map);
+      } else {
+        setStakePreviewBySignal({});
+      }
 
       const { data: betsData, error: betsErr } = await supabase
         .from("pers_sys_bets")
@@ -292,7 +350,7 @@ export default function WeekView_v2() {
               ) : (
                 <div className="space-y-2">
                   {readyGames.map((g) => (
-                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant="ready" onRefresh={refresh} />
+                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant="ready" onRefresh={refresh} stakePreviewBySignal={stakePreviewBySignal} />
                   ))}
                 </div>
               )}
@@ -307,7 +365,7 @@ export default function WeekView_v2() {
                 </h2>
                 <div className="space-y-2">
                   {placedGames.map((g) => (
-                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={true} placedBets={betsByGame[g.id] || []} showPending={showPending} variant="placed" onRefresh={refresh} />
+                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={true} placedBets={betsByGame[g.id] || []} showPending={showPending} variant="placed" onRefresh={refresh} stakePreviewBySignal={stakePreviewBySignal} />
                   ))}
                 </div>
               </div>
@@ -318,7 +376,7 @@ export default function WeekView_v2() {
               <h2 className="text-sm font-mono text-muted-foreground uppercase tracking-wider">Fixture ({otherGames.length})</h2>
               <div className="space-y-2">
                 {otherGames.map((g) => (
-                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} />
+                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} stakePreviewBySignal={stakePreviewBySignal} />
                 ))}
               </div>
               {games.length === 0 && <p className="text-muted-foreground text-sm">No upcoming games. Run "Pull Squiggle" first.</p>}
@@ -339,8 +397,9 @@ function GameCard(props: {
   showPending: boolean;
   variant: "ready" | "normal" | "live" | "placed";
   onRefresh: () => Promise<void> | void;
+  stakePreviewBySignal: Record<string, StakePreviewRow>;
 }) {
-  const { game, readySignals, pendingSignals, betPlaced, placedBets, showPending, variant, onRefresh } = props;
+  const { game, readySignals, pendingSignals, betPlaced, placedBets, showPending, variant, onRefresh, stakePreviewBySignal } = props;
 
   const date = new Date(game.start_time_aet);
   const homeTeam = (game.home_team as any)?.canonical_name || "?";
@@ -407,6 +466,7 @@ function GameCard(props: {
               const f = formatLegFromRow(s);
               const r = safeJson(s.reason_json) || {};
               const unitsOverride = s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null;
+              const preview = stakePreviewBySignal[s.id];
 
               return (
                 <div key={s.id} className="flex items-center justify-between gap-3 text-[11px] font-mono">
@@ -414,6 +474,12 @@ function GameCard(props: {
                     <span className="px-2 py-0.5 rounded bg-muted text-foreground">{s.system_code}</span>
                     <span className="text-muted-foreground">{f.market} {f.side}{f.line}</span>
                     <span className="text-muted-foreground">exec: {f.book} @ {f.price}</span>
+                    {preview?.units != null && (
+                      <span className="text-muted-foreground">units: {preview.units}</span>
+                    )}
+                    {preview?.stake_amount != null && (
+                      <span className="text-muted-foreground">stake: ${preview.stake_amount}</span>
+                    )}
                   </div>
                   <button
                     type="button"

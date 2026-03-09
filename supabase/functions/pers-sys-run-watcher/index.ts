@@ -8,6 +8,65 @@ const corsHeaders = {
 const VALID_WINDOW_STATUSES = ["ON_TIME", "DEGRADED_LATE", "MISSED_WINDOW"] as const;
 type WindowStatus = typeof VALID_WINDOW_STATUSES[number];
 
+type StepResult = {
+  ok: boolean;
+  status: number;
+  function_name: string;
+  payload: Record<string, unknown>;
+  response: unknown;
+};
+
+async function callEdgeFunction(args: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  functionName: string;
+  payload: Record<string, unknown>;
+}): Promise<StepResult> {
+  const res = await fetch(`${args.supabaseUrl}/functions/v1/${args.functionName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.serviceRoleKey}`,
+    },
+    body: JSON.stringify(args.payload),
+  });
+
+  const json = await res.json().catch(() => null);
+
+  return {
+    ok: res.ok,
+    status: res.status,
+    function_name: args.functionName,
+    payload: args.payload,
+    response: json,
+  };
+}
+
+function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{ functionName: string; payload: Record<string, unknown> }> {
+  if (!gameId) return [];
+
+  if (watchType === "T60") {
+    return [
+      { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T60" } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+    ];
+  }
+  if (watchType === "T30") {
+    return [
+      { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T30" } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+      { functionName: "pers-sys-send-t30-alert", payload: { game_id: gameId } },
+    ];
+  }
+  if (watchType === "T10") {
+    return [
+      { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T10" } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+    ];
+  }
+  return [];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -34,10 +93,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const dedupeKey = `${watchType}:${gameId ?? "GLOBAL"}:${windowStatus ?? "UNSPECIFIED"}`;
 
@@ -111,29 +169,55 @@ Deno.serve(async (req) => {
       );
     }
 
-    let downstreamResult: any = null;
+    // Ordered downstream orchestration
+    const steps = buildDownstreamSteps(watchType, gameId);
+    const downstreamSteps: StepResult[] = [];
 
-    // Downstream action: T30 alert
-    if (watchType === "T30" && gameId) {
-      const res = await fetch(
-        `${Deno.env.get("SUPABASE_URL")}/functions/v1/pers-sys-send-t30-alert`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ game_id: gameId }),
-        }
-      );
+    for (const step of steps) {
+      const result = await callEdgeFunction({
+        supabaseUrl,
+        serviceRoleKey,
+        functionName: step.functionName,
+        payload: step.payload,
+      });
+      downstreamSteps.push(result);
 
-      downstreamResult = await res.json().catch(() => null);
+      if (!result.ok) {
+        // Step failed — mark run as FAILED and return 502
+        const failNote = JSON.stringify({
+          window_status: windowStatus ?? "UNSPECIFIED",
+          window_note: windowNote ?? null,
+          downstream_steps: downstreamSteps,
+          failed_step: result.function_name,
+        });
+
+        await supabase
+          .from("pers_sys_watcher_runs")
+          .update({
+            run_status: "FAILED",
+            finished_at: new Date().toISOString(),
+            note: failNote,
+          })
+          .eq("id", runId);
+
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "downstream_step_failed",
+            run_id: runId,
+            failed_step: result.function_name,
+            downstream_steps: downstreamSteps,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
+    // All steps succeeded
     const finalNote = JSON.stringify({
       window_status: windowStatus ?? "UNSPECIFIED",
       window_note: windowNote ?? null,
-      downstream: downstreamResult ?? {},
+      downstream_steps: downstreamSteps,
     });
 
     await supabase
@@ -153,7 +237,7 @@ Deno.serve(async (req) => {
         game_id: gameId,
         window_status: windowStatus,
         window_note: windowNote,
-        downstream: downstreamResult,
+        downstream_steps: downstreamSteps,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

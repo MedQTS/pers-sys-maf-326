@@ -97,7 +97,26 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const dedupeKey = `${watchType}:${gameId ?? "GLOBAL"}:${windowStatus ?? "UNSPECIFIED"}`;
+    let scheduledStartIso: string | null = null;
+
+    if (gameId) {
+      const { data: gameRow } = await supabase
+        .from("pers_sys_games")
+        .select("start_time_aet")
+        .eq("id", gameId)
+        .maybeSingle();
+
+      if (gameRow?.start_time_aet) {
+        scheduledStartIso = new Date(gameRow.start_time_aet).toISOString();
+      }
+    }
+
+    const dedupeKey = [
+      watchType,
+      gameId ?? "GLOBAL",
+      scheduledStartIso ?? "NO_START",
+      windowStatus ?? "UNSPECIFIED",
+    ].join(":");
 
     // check for existing run
     const { data: existing } = await supabase

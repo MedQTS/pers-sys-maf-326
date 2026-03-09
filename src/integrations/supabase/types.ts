@@ -1062,6 +1062,45 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_watcher_runs: {
+        Row: {
+          created_at: string
+          dedupe_key: string
+          finished_at: string | null
+          game_id: string | null
+          id: string
+          note: string | null
+          run_status: string
+          started_at: string
+          trigger_source: string
+          watch_type: string
+        }
+        Insert: {
+          created_at?: string
+          dedupe_key: string
+          finished_at?: string | null
+          game_id?: string | null
+          id?: string
+          note?: string | null
+          run_status?: string
+          started_at?: string
+          trigger_source?: string
+          watch_type: string
+        }
+        Update: {
+          created_at?: string
+          dedupe_key?: string
+          finished_at?: string | null
+          game_id?: string | null
+          id?: string
+          note?: string | null
+          run_status?: string
+          started_at?: string
+          trigger_source?: string
+          watch_type?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       pers_sys_bankroll_summary: {

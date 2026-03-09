@@ -1016,6 +1016,21 @@ export type Database = {
         Returns: Json
       }
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
+      preview_leg_stake: {
+        Args: {
+          p_exec_best_book?: string
+          p_exec_best_price?: number
+          p_game_id: string
+          p_leg_type: string
+          p_line_at_bet?: number
+          p_ref_price?: number
+          p_side: string
+          p_snapshot_type?: string
+          p_system_code: string
+          p_units?: number
+        }
+        Returns: Json
+      }
     }
     Enums: {
       sys_fail_stage: "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM"

@@ -284,26 +284,58 @@ Deno.serve(async (req) => {
 
     const snapshotType = "T30";
     const dryRun = body["dry_run"] === true;
-    const onlyGameId = typeof body["game_id"] === "string" && body["game_id"].trim()
-      ? body["game_id"].trim()
-      : null;
+    const gameId = typeof body["game_id"] === "string" ? body["game_id"].trim() : "";
+
+    if (!gameId) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "missing_game_id" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    let signalsQuery = supabase
+    // Validate game exists, is scheduled, and hasn't started
+    const { data: gameCheck, error: gameCheckErr } = await supabase
+      .from("pers_sys_games")
+      .select("id, status, start_time_aet")
+      .eq("id", gameId)
+      .maybeSingle();
+
+    if (gameCheckErr) throw gameCheckErr;
+
+    if (!gameCheck) {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_found", game_id: gameId }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (gameCheck.status !== "SCHEDULED") {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_scheduled", game_id: gameId, status: gameCheck.status }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (new Date(gameCheck.start_time_aet).getTime() <= Date.now()) {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_start_in_past", game_id: gameId }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const { data: signalsData, error: signalsErr } = await supabase
       .from("pers_sys_signals_v2")
       .select("id,game_id,system_code,model_snapshot,execution_snapshot,signal_status,pass,leg_type,side,line_at_bet,ref_price,exec_best_price,exec_best_book,recommended_units,reason_json,created_at")
+      .eq("game_id", gameId)
       .eq("execution_snapshot", snapshotType)
       .eq("signal_status", "READY")
       .order("created_at", { ascending: false });
 
-    if (onlyGameId) {
-      signalsQuery = signalsQuery.eq("game_id", onlyGameId);
-    }
-
-    const { data: signalsData, error: signalsErr } = await signalsQuery;
     if (signalsErr) throw signalsErr;
 
     const signals = (signalsData ?? []) as SignalRow[];
@@ -315,6 +347,7 @@ Deno.serve(async (req) => {
           snapshot_type: snapshotType,
           sent: false,
           skipped_reason: "no_ready_t30_signals",
+          game_id: gameId,
           counts: { ready_signals: 0, action_now: 0, previously_sent: 0, logged_excluded: 0 },
         }),
         {
@@ -323,8 +356,6 @@ Deno.serve(async (req) => {
         },
       );
     }
-
-    const gameIds = Array.from(new Set(signals.map((s) => s.game_id)));
 
     const { data: gamesData, error: gamesErr } = await supabase
       .from("pers_sys_games")
@@ -336,7 +367,7 @@ Deno.serve(async (req) => {
         home_team:pers_sys_teams!pers_sys_games_home_team_id_fkey(canonical_name),
         away_team:pers_sys_teams!pers_sys_games_away_team_id_fkey(canonical_name)
       `)
-      .in("id", gameIds);
+      .eq("id", gameId);
 
     if (gamesErr) throw gamesErr;
 
@@ -347,7 +378,7 @@ Deno.serve(async (req) => {
     const { data: betsData, error: betsErr } = await supabase
       .from("pers_sys_bets")
       .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,created_at")
-      .in("game_id", gameIds)
+      .eq("game_id", gameId)
       .eq("status", "UNSETTLED");
 
     if (betsErr) throw betsErr;
@@ -357,7 +388,7 @@ Deno.serve(async (req) => {
     const { data: priorItemsData, error: priorItemsErr } = await supabase
       .from("pers_sys_email_alert_items")
       .select("id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at")
-      .in("game_id", gameIds)
+      .eq("game_id", gameId)
       .eq("snapshot_type", snapshotType)
       .order("created_at", { ascending: false });
 
@@ -529,7 +560,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const runGameId = actionRows[0]?.signal.game_id ?? previousRows[0]?.signal.game_id ?? gameIds[0];
+    const runGameId = gameId;
 
     const { data: insertedRun, error: runInsertErr } = await supabase
       .from("pers_sys_email_alert_runs")

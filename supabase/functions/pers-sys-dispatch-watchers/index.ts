@@ -69,36 +69,71 @@ Deno.serve(async (req) => {
     const onlyGameId =
       typeof body.game_id === "string" && body.game_id.trim() ? body.game_id.trim() : null;
 
-    const startIso = now.toISOString();
-    const endIso = new Date(nowMs + lookaheadMinutes * 60 * 1000).toISOString();
+    const forceWatchType: "T60" | "T30" | "T10" | null =
+      typeof body.force_watch_type === "string" && ["T60", "T30", "T10"].includes(body.force_watch_type)
+        ? (body.force_watch_type as "T60" | "T30" | "T10")
+        : null;
 
-    let gamesQuery = supabase
-      .from("pers_sys_games")
-      .select("id,start_time_aet,status,round,venue")
-      .eq("status", "SCHEDULED")
-      .gte("start_time_aet", startIso)
-      .lte("start_time_aet", endIso)
-      .order("start_time_aet", { ascending: true });
-
-    if (onlyGameId) {
-      gamesQuery = gamesQuery.eq("id", onlyGameId);
+    if (forceWatchType && !onlyGameId) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "force_watch_type_requires_game_id" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    const { data: gamesData, error: gamesErr } = await gamesQuery;
-    if (gamesErr) throw gamesErr;
+    let games: GameRow[];
 
-    const games = (gamesData ?? []) as GameRow[];
+    if (forceWatchType && onlyGameId) {
+      // Forced dispatch: fetch the single game regardless of time window
+      const { data: gamesData, error: gamesErr } = await supabase
+        .from("pers_sys_games")
+        .select("id,start_time_aet,status,round,venue")
+        .eq("id", onlyGameId)
+        .limit(1);
+
+      if (gamesErr) throw gamesErr;
+      games = (gamesData ?? []) as GameRow[];
+    } else {
+      // Normal dispatch: scan scheduled games within lookahead window
+      const startIso = now.toISOString();
+      const endIso = new Date(nowMs + lookaheadMinutes * 60 * 1000).toISOString();
+
+      let gamesQuery = supabase
+        .from("pers_sys_games")
+        .select("id,start_time_aet,status,round,venue")
+        .eq("status", "SCHEDULED")
+        .gte("start_time_aet", startIso)
+        .lte("start_time_aet", endIso)
+        .order("start_time_aet", { ascending: true });
+
+      if (onlyGameId) {
+        gamesQuery = gamesQuery.eq("id", onlyGameId);
+      }
+
+      const { data: gamesData, error: gamesErr } = await gamesQuery;
+      if (gamesErr) throw gamesErr;
+      games = (gamesData ?? []) as GameRow[];
+    }
 
     const dispatchItems: DispatchItem[] = [];
     for (const g of games) {
       const mins = minutesToStart(g.start_time_aet, nowMs);
-      const watches = classifyWatchWindows(mins);
-      for (const watch of watches) {
+
+      if (forceWatchType) {
         dispatchItems.push({
           game_id: g.id,
-          watch_type: watch,
+          watch_type: forceWatchType,
           minutes_to_start: Number(mins.toFixed(2)),
         });
+      } else {
+        const watches = classifyWatchWindows(mins);
+        for (const watch of watches) {
+          dispatchItems.push({
+            game_id: g.id,
+            watch_type: watch,
+            minutes_to_start: Number(mins.toFixed(2)),
+          });
+        }
       }
     }
 
@@ -134,6 +169,7 @@ Deno.serve(async (req) => {
         ok: true,
         now_iso: now.toISOString(),
         lookahead_minutes: lookaheadMinutes,
+        force_watch_type: forceWatchType ?? undefined,
         scanned_games: games.length,
         dispatch_candidates: dispatchItems.length,
         dispatched: results,

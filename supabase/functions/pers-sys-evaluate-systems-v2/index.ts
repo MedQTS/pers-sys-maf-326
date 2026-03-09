@@ -86,8 +86,8 @@ type SystemV2Row = {
   system_name?: string | null;
   active?: boolean | null;
 
-  primary_market?: "H2H" | "LINE" | null;
-  overlay_market?: "H2H" | "LINE" | null;
+  primary_market?: "H2H" | "LINE" | "TOTALS" | null;
+  overlay_market?: "H2H" | "LINE" | "TOTALS" | null;
   execution_snapshot?: "OPEN" | "T30" | "T10" | null;
   model_snapshot?: "OPEN" | "T30" | "T10" | null;
 

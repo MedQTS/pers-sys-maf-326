@@ -2,22 +2,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 // Stage 3: Reference vs Execution book split
-const REFERENCE_BOOKS = [
-  "tab",
-  "pointsbetau",
-  "neds",
-  "unibet",
-  "betr_au",
-  "sportsbet",
-  "ladbrokes_au",
-] as const;
+const REFERENCE_BOOKS = ["tab", "pointsbetau", "neds", "unibet", "betr_au", "sportsbet", "ladbrokes_au"] as const;
 
-const EXECUTION_BOOKS = ["tab", "pointsbetau", "neds", "unibet", "betr_au"] as const;
+const EXECUTION_BOOKS = ["ladbrokes_au", "tab", "pointsbetau", "neds", "unibet", "betr_au"] as const;
 
 const referenceSet = new Set<string>(REFERENCE_BOOKS as unknown as string[]);
 const executionSet = new Set<string>(EXECUTION_BOOKS as unknown as string[]);
@@ -26,22 +17,15 @@ function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 // Stage 3 Step 2: Best-exec selection helpers
-const execPriority = new Map<string, number>(
-  (EXECUTION_BOOKS as unknown as string[]).map((k, i) => [k, i])
-);
+const execPriority = new Map<string, number>((EXECUTION_BOOKS as unknown as string[]).map((k, i) => [k, i]));
 
 type LineCandidate = { book: string; point: number; price: number };
 
-function pickBestLineAtAnchor(
-  candidates: LineCandidate[],
-  anchorLine: number | null
-): LineCandidate | null {
+function pickBestLineAtAnchor(candidates: LineCandidate[], anchorLine: number | null): LineCandidate | null {
   if (!Number.isFinite(anchorLine as number)) return null;
   if (!candidates || candidates.length === 0) return null;
 
@@ -84,17 +68,14 @@ const TOTALS_MIN_BOOKS: Record<string, number> = {
 };
 
 // Best-exec price picker (highest price, tie-break by exec priority)
-function pickBestExecPrice(
-  candidates: { book: string; price: number }[]
-): { book: string; price: number } | null {
+function pickBestExecPrice(candidates: { book: string; price: number }[]): { book: string; price: number } | null {
   if (!candidates.length) return null;
   let best = candidates[0];
   for (let i = 1; i < candidates.length; i++) {
     const c = candidates[i];
     if (
       c.price > best.price ||
-      (c.price === best.price &&
-        (execPriority.get(c.book) ?? 9999) < (execPriority.get(best.book) ?? 9999))
+      (c.price === best.price && (execPriority.get(c.book) ?? 9999) < (execPriority.get(best.book) ?? 9999))
     ) {
       best = c;
     }
@@ -103,8 +84,7 @@ function pickBestExecPrice(
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS")
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -121,7 +101,7 @@ Deno.serve(async (req) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
     const snapshotType: "OPEN" | "T60" | "T30" | "T10" | "CURRENT" = rawSnapshotType as
@@ -131,10 +111,7 @@ Deno.serve(async (req) => {
       | "T10"
       | "CURRENT";
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const apiKey = Deno.env.get("PERS_SYS_ODDS_API_KEY");
     if (!apiKey) throw new Error("PERS_SYS_ODDS_API_KEY not set");
@@ -179,13 +156,11 @@ Deno.serve(async (req) => {
           eligible: 0,
           snapshots_stored: 0,
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const { data: teams } = await supabase
-      .from("pers_sys_teams")
-      .select("id, canonical_name, oddsapi_name");
+    const { data: teams } = await supabase.from("pers_sys_teams").select("id, canonical_name, oddsapi_name");
 
     function normName(s: string): string {
       return String(s || "")
@@ -250,9 +225,7 @@ Deno.serve(async (req) => {
           .from("pers_sys_market_snapshots")
           .insert(row as any, { onConflict: SNAPSHOT_CONFLICT, ignoreDuplicates: true } as any);
       }
-      return await supabase
-        .from("pers_sys_market_snapshots")
-        .upsert(row as any, { onConflict: SNAPSHOT_CONFLICT });
+      return await supabase.from("pers_sys_market_snapshots").upsert(row as any, { onConflict: SNAPSHOT_CONFLICT });
     }
 
     let snapshotsStored = 0;
@@ -274,7 +247,10 @@ Deno.serve(async (req) => {
     for (const game of eligibleGames) {
       const expectedHome = teamById[game.home_team_id];
       const expectedAway = teamById[game.away_team_id];
-      if (!expectedHome || !expectedAway) { skipped_no_team_map++; continue; }
+      if (!expectedHome || !expectedAway) {
+        skipped_no_team_map++;
+        continue;
+      }
 
       const gameTs = new Date(game.start_time_aet).getTime();
 
@@ -302,13 +278,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (!matchedEvent) { skipped_no_event_match++; continue; }
+      if (!matchedEvent) {
+        skipped_no_event_match++;
+        continue;
+      }
 
       if (!game.oddsapi_event_id && matchedEvent.id) {
-        await supabase
-          .from("pers_sys_games")
-          .update({ oddsapi_event_id: matchedEvent.id })
-          .eq("id", game.id);
+        await supabase.from("pers_sys_games").update({ oddsapi_event_id: matchedEvent.id }).eq("id", game.id);
       }
 
       const bookmakers = matchedEvent.bookmakers || [];
@@ -367,22 +343,36 @@ Deno.serve(async (req) => {
               const isAway = expectedAway.norm_names.has(outcomeNorm);
 
               if (isHome && bmKey) {
-                if (isRef) { refH2hBooks.add(bmKey); refHomePrices.push(price); }
+                if (isRef) {
+                  refH2hBooks.add(bmKey);
+                  refHomePrices.push(price);
+                }
                 if (isExec) {
                   execH2hBooks.add(bmKey);
-                  if (execBestHomePrice === null || price > execBestHomePrice ||
-                      (price === execBestHomePrice && (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestHomeBook!) ?? 9999))) {
+                  if (
+                    execBestHomePrice === null ||
+                    price > execBestHomePrice ||
+                    (price === execBestHomePrice &&
+                      (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestHomeBook!) ?? 9999))
+                  ) {
                     execBestHomePrice = price;
                     execBestHomeBook = bmKey;
                   }
                 }
               }
               if (isAway && bmKey) {
-                if (isRef) { refH2hBooks.add(bmKey); refAwayPrices.push(price); }
+                if (isRef) {
+                  refH2hBooks.add(bmKey);
+                  refAwayPrices.push(price);
+                }
                 if (isExec) {
                   execH2hBooks.add(bmKey);
-                  if (execBestAwayPrice === null || price > execBestAwayPrice ||
-                      (price === execBestAwayPrice && (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestAwayBook!) ?? 9999))) {
+                  if (
+                    execBestAwayPrice === null ||
+                    price > execBestAwayPrice ||
+                    (price === execBestAwayPrice &&
+                      (execPriority.get(bmKey) ?? 9999) < (execPriority.get(execBestAwayBook!) ?? 9999))
+                  ) {
                     execBestAwayPrice = price;
                     execBestAwayBook = bmKey;
                   }
@@ -439,10 +429,13 @@ Deno.serve(async (req) => {
 
             // Validate: both must have finite values and share the same point
             if (
-              !Number.isFinite(overPoint) || !Number.isFinite(underPoint) ||
-              !Number.isFinite(overPrice) || !Number.isFinite(underPrice) ||
+              !Number.isFinite(overPoint) ||
+              !Number.isFinite(underPoint) ||
+              !Number.isFinite(overPrice) ||
+              !Number.isFinite(underPrice) ||
               overPoint !== underPoint
-            ) continue;
+            )
+              continue;
 
             if (bmKey) {
               if (isRef) {
@@ -504,8 +497,14 @@ Deno.serve(async (req) => {
         const refHomeLineMed = median(refHomeLines);
         const refAwayLineMed = median(refAwayLines);
 
-        const bestHomeLine = pickBestLineAtAnchor(execHomeLineCandidates, Number.isFinite(refHomeLineMed) ? refHomeLineMed : null);
-        const bestAwayLine = pickBestLineAtAnchor(execAwayLineCandidates, Number.isFinite(refAwayLineMed) ? refAwayLineMed : null);
+        const bestHomeLine = pickBestLineAtAnchor(
+          execHomeLineCandidates,
+          Number.isFinite(refHomeLineMed) ? refHomeLineMed : null,
+        );
+        const bestAwayLine = pickBestLineAtAnchor(
+          execAwayLineCandidates,
+          Number.isFinite(refAwayLineMed) ? refAwayLineMed : null,
+        );
 
         const { error } = await writeSnapshot({
           game_id: game.id,
@@ -540,9 +539,12 @@ Deno.serve(async (req) => {
 
         // Guardrails
         if (
-          Number.isFinite(totalLineMed) && totalLineMed > 0 &&
-          Number.isFinite(overPriceMed) && overPriceMed > 0 &&
-          Number.isFinite(underPriceMed) && underPriceMed > 0
+          Number.isFinite(totalLineMed) &&
+          totalLineMed > 0 &&
+          Number.isFinite(overPriceMed) &&
+          overPriceMed > 0 &&
+          Number.isFinite(underPriceMed) &&
+          underPriceMed > 0
         ) {
           const bestOver = pickBestExecPrice(execOverCandidates);
           const bestUnder = pickBestExecPrice(execUnderCandidates);
@@ -590,15 +592,12 @@ Deno.serve(async (req) => {
         skipped_no_ref_totals,
         skipped_no_exec_books,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(
-      JSON.stringify({ ok: false, error: String(e?.message || e) }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ ok: false, error: String(e?.message || e) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

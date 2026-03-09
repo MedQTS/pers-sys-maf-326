@@ -148,8 +148,8 @@ Deno.serve(async (req) => {
 
     const runId = runRow.id;
 
-    // If MISSED_WINDOW and not force_run, skip downstream
-    if (windowStatus === "MISSED_WINDOW" && !forceRun) {
+    // If MISSED_WINDOW or TOO_EARLY and not force_run, skip downstream
+    if ((windowStatus === "MISSED_WINDOW" || windowStatus === "TOO_EARLY") && !forceRun) {
       await supabase
         .from("pers_sys_watcher_runs")
         .update({
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           ok: true,
           skipped: true,
-          reason: "missed_window",
+          reason: windowStatus === "TOO_EARLY" ? "too_early" : "missed_window",
           run_id: runId,
           window_status: windowStatus,
           window_note: windowNote,

@@ -184,6 +184,44 @@ export default function WeekView_v2() {
       if (sigErr) throw sigErr;
       setSignalsAll((sigs as any) || []);
 
+      // Compute stake previews for READY signals
+      const readySigs = ((sigs as SignalV2Row[]) || []).filter(
+        (s) => s.signal_status === "READY" || (s.pass === true && !s.signal_status)
+      );
+      if (readySigs.length > 0) {
+        const previewResults = await Promise.all(
+          readySigs.map(async (s) => {
+            try {
+              const r = safeJson(s.reason_json) || {};
+              const payload = {
+                p_game_id: s.game_id,
+                p_system_code: s.system_code,
+                p_leg_type: s.leg_type,
+                p_side: s.side,
+                p_line_at_bet: s.line_at_bet ?? null,
+                p_exec_best_price: s.exec_best_price ?? null,
+                p_exec_best_book: s.exec_best_book ?? null,
+                p_ref_price: s.ref_price ?? null,
+                p_units: s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null,
+                p_snapshot_type: s.execution_snapshot ?? s.model_snapshot ?? null,
+              };
+              const { data } = await supabase.rpc("preview_leg_stake", payload);
+              if (data?.ok === true) return { id: s.id, preview: data as StakePreviewRow };
+              return null;
+            } catch {
+              return null;
+            }
+          })
+        );
+        const map: Record<string, StakePreviewRow> = {};
+        for (const r of previewResults) {
+          if (r) map[r.id] = r.preview;
+        }
+        setStakePreviewBySignal(map);
+      } else {
+        setStakePreviewBySignal({});
+      }
+
       const { data: betsData, error: betsErr } = await supabase
         .from("pers_sys_bets")
         .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,placed_ts,created_at")

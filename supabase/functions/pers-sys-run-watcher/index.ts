@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
     let initialRunStatus = "STARTED";
     if (windowStatus === "DEGRADED_LATE") initialRunStatus = "DEGRADED_LATE";
     if (windowStatus === "MISSED_WINDOW") initialRunStatus = "MISSED_WINDOW";
+    if (windowStatus === "TOO_EARLY") initialRunStatus = "TOO_EARLY";
 
     const noteJson = JSON.stringify({
       window_status: windowStatus ?? "UNSPECIFIED",

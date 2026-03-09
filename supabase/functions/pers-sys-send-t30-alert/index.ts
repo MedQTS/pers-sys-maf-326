@@ -670,7 +670,7 @@ Deno.serve(async (req) => {
       );
     } catch (sendErr) {
       if (runId) {
-        await supabase.from("email_alert_runs").delete().eq("id", runId);
+        await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
       }
       throw sendErr;
     }

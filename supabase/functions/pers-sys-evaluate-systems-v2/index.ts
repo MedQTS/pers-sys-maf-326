@@ -751,7 +751,11 @@ Deno.serve(async (req) => {
             c === "open_band" ||
             c === "odds_band" ||
             c === "excluded_state" ||
-            c === "not_lost_prior"
+            c === "not_lost_prior" ||
+            c === "totals_move_lt_3" ||
+            c === "totals_band" ||
+            c === "missing_totals_data" ||
+            c === "missing_totals_line"
           ) {
             return true;
           }

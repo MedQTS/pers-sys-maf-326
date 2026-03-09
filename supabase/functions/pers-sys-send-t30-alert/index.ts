@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
     const runGameId = actionRows[0]?.signal.game_id ?? previousRows[0]?.signal.game_id ?? gameIds[0];
 
     const { data: insertedRun, error: runInsertErr } = await supabase
-      .from("email_alert_runs")
+      .from("pers_sys_email_alert_runs")
       .insert({
         game_id: runGameId,
         snapshot_type: snapshotType,

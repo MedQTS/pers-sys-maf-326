@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_WINDOW_STATUSES = ["ON_TIME", "DEGRADED_LATE", "MISSED_WINDOW"] as const;
+const VALID_WINDOW_STATUSES = ["ON_TIME", "DEGRADED_LATE", "MISSED_WINDOW", "TOO_EARLY"] as const;
 type WindowStatus = typeof VALID_WINDOW_STATUSES[number];
 
 type StepResult = {
@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
     let initialRunStatus = "STARTED";
     if (windowStatus === "DEGRADED_LATE") initialRunStatus = "DEGRADED_LATE";
     if (windowStatus === "MISSED_WINDOW") initialRunStatus = "MISSED_WINDOW";
+    if (windowStatus === "TOO_EARLY") initialRunStatus = "TOO_EARLY";
 
     const noteJson = JSON.stringify({
       window_status: windowStatus ?? "UNSPECIFIED",
@@ -147,8 +148,8 @@ Deno.serve(async (req) => {
 
     const runId = runRow.id;
 
-    // If MISSED_WINDOW and not force_run, skip downstream
-    if (windowStatus === "MISSED_WINDOW" && !forceRun) {
+    // If MISSED_WINDOW or TOO_EARLY and not force_run, skip downstream
+    if ((windowStatus === "MISSED_WINDOW" || windowStatus === "TOO_EARLY") && !forceRun) {
       await supabase
         .from("pers_sys_watcher_runs")
         .update({
@@ -160,7 +161,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           ok: true,
           skipped: true,
-          reason: "missed_window",
+          reason: windowStatus === "TOO_EARLY" ? "too_early" : "missed_window",
           run_id: runId,
           window_status: windowStatus,
           window_note: windowNote,

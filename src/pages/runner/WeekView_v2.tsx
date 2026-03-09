@@ -349,7 +349,7 @@ export default function WeekView_v2() {
               ) : (
                 <div className="space-y-2">
                   {readyGames.map((g) => (
-                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant="ready" onRefresh={refresh} />
+                    <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant="ready" onRefresh={refresh} stakePreviewBySignal={stakePreviewBySignal} />
                   ))}
                 </div>
               )}

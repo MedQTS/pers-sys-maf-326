@@ -164,6 +164,65 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_execution_failures: {
+        Row: {
+          caused_by_run_id: string | null
+          created_at: string
+          expected_action_at: string | null
+          failure_type: string
+          game_id: string
+          id: string
+          leg_type: string | null
+          line_at_bet: number | null
+          market_snapshot_type: string | null
+          note_short: string | null
+          resolved: boolean
+          resolved_at: string | null
+          side: string | null
+          system_code: string | null
+        }
+        Insert: {
+          caused_by_run_id?: string | null
+          created_at?: string
+          expected_action_at?: string | null
+          failure_type: string
+          game_id: string
+          id?: string
+          leg_type?: string | null
+          line_at_bet?: number | null
+          market_snapshot_type?: string | null
+          note_short?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          side?: string | null
+          system_code?: string | null
+        }
+        Update: {
+          caused_by_run_id?: string | null
+          created_at?: string
+          expected_action_at?: string | null
+          failure_type?: string
+          game_id?: string
+          id?: string
+          leg_type?: string | null
+          line_at_bet?: number | null
+          market_snapshot_type?: string | null
+          note_short?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          side?: string | null
+          system_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_execution_failures_caused_by_run_id_fkey"
+            columns: ["caused_by_run_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_watcher_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pers_sys_games: {
         Row: {
           away_score: number | null

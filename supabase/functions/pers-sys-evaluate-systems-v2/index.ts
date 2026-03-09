@@ -35,6 +35,15 @@ type SnapshotRow = {
   exec_best_away_line_price: number | null;
   exec_best_away_line_book: string | null;
 
+  total_line: number | null;
+  over_price: number | null;
+  under_price: number | null;
+  exec_best_total_line: number | null;
+  exec_best_over_price: number | null;
+  exec_best_over_book: string | null;
+  exec_best_under_price: number | null;
+  exec_best_under_book: string | null;
+
   ref_books_observed: any[];
   exec_books_observed: any[];
 };

@@ -366,6 +366,11 @@ export type Database = {
           exec_best_home_line_book: string | null
           exec_best_home_line_price: number | null
           exec_best_home_price: number | null
+          exec_best_over_book: string | null
+          exec_best_over_price: number | null
+          exec_best_total_line: number | null
+          exec_best_under_book: string | null
+          exec_best_under_price: number | null
           exec_books_observed: Json
           game_id: string
           home_line: number | null
@@ -373,9 +378,12 @@ export type Database = {
           home_price: number | null
           id: string
           market_type: string
+          over_price: number | null
           ref_books_observed: Json
           snapshot_ts: string
           snapshot_type: string
+          total_line: number | null
+          under_price: number | null
         }
         Insert: {
           agg_method?: string
@@ -394,6 +402,11 @@ export type Database = {
           exec_best_home_line_book?: string | null
           exec_best_home_line_price?: number | null
           exec_best_home_price?: number | null
+          exec_best_over_book?: string | null
+          exec_best_over_price?: number | null
+          exec_best_total_line?: number | null
+          exec_best_under_book?: string | null
+          exec_best_under_price?: number | null
           exec_books_observed?: Json
           game_id: string
           home_line?: number | null
@@ -401,9 +414,12 @@ export type Database = {
           home_price?: number | null
           id?: string
           market_type: string
+          over_price?: number | null
           ref_books_observed?: Json
           snapshot_ts: string
           snapshot_type: string
+          total_line?: number | null
+          under_price?: number | null
         }
         Update: {
           agg_method?: string
@@ -422,6 +438,11 @@ export type Database = {
           exec_best_home_line_book?: string | null
           exec_best_home_line_price?: number | null
           exec_best_home_price?: number | null
+          exec_best_over_book?: string | null
+          exec_best_over_price?: number | null
+          exec_best_total_line?: number | null
+          exec_best_under_book?: string | null
+          exec_best_under_price?: number | null
           exec_books_observed?: Json
           game_id?: string
           home_line?: number | null
@@ -429,9 +450,12 @@ export type Database = {
           home_price?: number | null
           id?: string
           market_type?: string
+          over_price?: number | null
           ref_books_observed?: Json
           snapshot_ts?: string
           snapshot_type?: string
+          total_line?: number | null
+          under_price?: number | null
         }
         Relationships: [
           {
@@ -1209,9 +1233,9 @@ export type Database = {
     }
     Enums: {
       sys_fail_stage: "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM"
-      sys_leg_type: "H2H" | "LINE"
-      sys_market: "H2H" | "LINE"
-      sys_side: "HOME" | "AWAY"
+      sys_leg_type: "H2H" | "LINE" | "TOTALS"
+      sys_market: "H2H" | "LINE" | "TOTALS"
+      sys_side: "HOME" | "AWAY" | "OVER" | "UNDER"
       sys_signal_status: "READY" | "PENDING"
       sys_snapshot: "OPEN" | "T30" | "T10"
     }
@@ -1342,9 +1366,9 @@ export const Constants = {
   public: {
     Enums: {
       sys_fail_stage: ["GATE", "DATA", "MODEL", "EXEC", "OVERLAY", "SYSTEM"],
-      sys_leg_type: ["H2H", "LINE"],
-      sys_market: ["H2H", "LINE"],
-      sys_side: ["HOME", "AWAY"],
+      sys_leg_type: ["H2H", "LINE", "TOTALS"],
+      sys_market: ["H2H", "LINE", "TOTALS"],
+      sys_side: ["HOME", "AWAY", "OVER", "UNDER"],
       sys_signal_status: ["READY", "PENDING"],
       sys_snapshot: ["OPEN", "T30", "T10"],
     },

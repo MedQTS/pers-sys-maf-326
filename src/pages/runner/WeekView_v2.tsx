@@ -138,6 +138,7 @@ export default function WeekView_v2() {
   const [unsettledByGame, setUnsettledByGame] = useState<Record<string, boolean>>({});
   const [openBets, setOpenBets] = useState<BetRow[]>([]);
   const [showPending, setShowPending] = useState(true);
+  const [stakePreviewBySignal, setStakePreviewBySignal] = useState<Record<string, StakePreviewRow>>({});
 
   useEffect(() => { loadData(); }, []);
 

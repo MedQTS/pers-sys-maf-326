@@ -378,7 +378,7 @@ Deno.serve(async (req) => {
     const { data: betsData, error: betsErr } = await supabase
       .from("pers_sys_bets")
       .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,created_at")
-      .in("game_id", gameIds)
+      .eq("game_id", gameId)
       .eq("status", "UNSETTLED");
 
     if (betsErr) throw betsErr;

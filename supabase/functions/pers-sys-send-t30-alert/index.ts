@@ -600,7 +600,7 @@ Deno.serve(async (req) => {
 
       if (!postmarkRes.ok) {
         if (runId) {
-          await supabase.from("email_alert_runs").delete().eq("id", runId);
+          await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
         }
         return new Response(
           JSON.stringify({

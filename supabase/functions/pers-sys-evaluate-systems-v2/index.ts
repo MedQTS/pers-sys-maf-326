@@ -195,6 +195,31 @@ function buildLegLine(args: {
   };
 }
 
+function buildLegTotals(args: {
+  system_code: string;
+  snapshot_type: string;
+  side: "OVER" | "UNDER";
+  line_at_bet: number | null;
+  ref_price: number | null;
+  exec_best_price: number | null;
+  exec_best_book: string | null;
+  ref_books_observed?: any[];
+  exec_books_observed?: any[];
+}) {
+  return {
+    system_code: args.system_code,
+    snapshot_type: args.snapshot_type,
+    leg_type: "TOTALS",
+    side: args.side,
+    line_at_bet: args.line_at_bet ?? null,
+    ref_price: args.ref_price ?? null,
+    exec_best_price: args.exec_best_price ?? null,
+    exec_best_book: args.exec_best_book ?? null,
+    ref_books_observed: args.ref_books_observed ?? [],
+    exec_books_observed: args.exec_books_observed ?? [],
+  };
+}
+
 async function getPriorOutcomeForTeam(args: {
   supabase: any;
   season: number;

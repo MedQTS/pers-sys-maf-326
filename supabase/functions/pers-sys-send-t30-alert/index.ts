@@ -633,7 +633,7 @@ Deno.serve(async (req) => {
 
       if (itemRows.length > 0) {
         const { error: itemInsertErr } = await supabase
-          .from("email_alert_items")
+          .from("pers_sys_email_alert_items")
           .insert(itemRows);
 
         if (itemInsertErr) {

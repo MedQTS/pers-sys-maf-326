@@ -638,10 +638,13 @@ Deno.serve(async (req) => {
 
         const openH2H = pickSnap(gameSnaps, "OPEN", "H2H");
         const openLine = pickSnap(gameSnaps, "OPEN", "LINE");
+        const openTotals = pickSnap(gameSnaps, "OPEN", "TOTALS");
         const modelH2H = pickSnap(gameSnaps, rulesSnap, "H2H");
         const modelLine = pickSnap(gameSnaps, rulesSnap, "LINE");
+        const modelTotals = pickSnap(gameSnaps, rulesSnap, "TOTALS");
         const execH2H = pickSnap(gameSnaps, execSnap, "H2H");
         const execLine = pickSnap(gameSnaps, execSnap, "LINE");
+        const execTotals = pickSnap(gameSnaps, execSnap, "TOTALS");
 
         const reason: Record<string, any> = {
           system_code,

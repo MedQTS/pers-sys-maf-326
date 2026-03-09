@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
         ok: true,
         now_iso: now.toISOString(),
         lookahead_minutes: lookaheadMinutes,
+        force_watch_type: forceWatchType ?? undefined,
         scanned_games: games.length,
         dispatch_candidates: dispatchItems.length,
         dispatched: results,

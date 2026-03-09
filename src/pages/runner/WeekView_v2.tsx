@@ -46,6 +46,24 @@ function safeJson(x: any) {
   try { return JSON.parse(x); } catch { return null; }
 }
 
+type StakePreviewRow = {
+  ok: boolean;
+  status?: string | null;
+  game_id?: string;
+  system_code?: string;
+  leg_type?: string | null;
+  side?: string | null;
+  line_at_bet?: number | null;
+  snapshot_type?: string | null;
+  price?: number | null;
+  book?: string | null;
+  units?: number | null;
+  stake_amount?: number | null;
+  bankroll_snapshot?: number | null;
+  one_u_pct?: number | null;
+  error?: string | null;
+};
+
 function fmtLine(n: number | null) {
   if (n == null) return "";
   return `${n > 0 ? "+" : ""}${n}`;

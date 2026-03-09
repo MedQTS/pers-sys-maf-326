@@ -1918,6 +1918,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         ok: true,
         season,
+        game_id: onlyGameId,
         horizon_days: horizonDays,
         window: { startIso, endIso },
         signals_created: signalsCreated,

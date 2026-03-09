@@ -355,7 +355,7 @@ Deno.serve(async (req) => {
     const unsettledBets = (betsData ?? []) as BetRow[];
 
     const { data: priorItemsData, error: priorItemsErr } = await supabase
-      .from("email_alert_items")
+      .from("pers_sys_email_alert_items")
       .select("id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at")
       .in("game_id", gameIds)
       .eq("snapshot_type", snapshotType)
@@ -532,7 +532,7 @@ Deno.serve(async (req) => {
     const runGameId = actionRows[0]?.signal.game_id ?? previousRows[0]?.signal.game_id ?? gameIds[0];
 
     const { data: insertedRun, error: runInsertErr } = await supabase
-      .from("email_alert_runs")
+      .from("pers_sys_email_alert_runs")
       .insert({
         game_id: runGameId,
         snapshot_type: snapshotType,
@@ -600,7 +600,7 @@ Deno.serve(async (req) => {
 
       if (!postmarkRes.ok) {
         if (runId) {
-          await supabase.from("email_alert_runs").delete().eq("id", runId);
+          await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
         }
         return new Response(
           JSON.stringify({
@@ -633,7 +633,7 @@ Deno.serve(async (req) => {
 
       if (itemRows.length > 0) {
         const { error: itemInsertErr } = await supabase
-          .from("email_alert_items")
+          .from("pers_sys_email_alert_items")
           .insert(itemRows);
 
         if (itemInsertErr) {
@@ -670,7 +670,7 @@ Deno.serve(async (req) => {
       );
     } catch (sendErr) {
       if (runId) {
-        await supabase.from("email_alert_runs").delete().eq("id", runId);
+        await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
       }
       throw sendErr;
     }

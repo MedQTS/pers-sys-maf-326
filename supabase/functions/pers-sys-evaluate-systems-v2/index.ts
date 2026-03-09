@@ -300,6 +300,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const season = Number(body.season ?? new Date().getFullYear());
     const horizonDays = Number(body.horizon_days ?? 10);
+    const onlyGameId =
+      typeof body.game_id === "string" && body.game_id.trim()
+        ? body.game_id.trim()
+        : null;
 
     const now = new Date();
     const startIso = now.toISOString();

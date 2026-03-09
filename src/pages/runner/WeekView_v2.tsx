@@ -375,7 +375,7 @@ export default function WeekView_v2() {
               <h2 className="text-sm font-mono text-muted-foreground uppercase tracking-wider">Fixture ({otherGames.length})</h2>
               <div className="space-y-2">
                 {otherGames.map((g) => (
-                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} />
+                  <GameCard key={g.id} game={g} readySignals={byGame[g.id]?.ready || []} pendingSignals={byGame[g.id]?.pending || []} betPlaced={false} placedBets={[]} showPending={showPending} variant={g.status === "LIVE" ? "live" : "normal"} onRefresh={refresh} stakePreviewBySignal={stakePreviewBySignal} />
                 ))}
               </div>
               {games.length === 0 && <p className="text-muted-foreground text-sm">No upcoming games. Run "Pull Squiggle" first.</p>}

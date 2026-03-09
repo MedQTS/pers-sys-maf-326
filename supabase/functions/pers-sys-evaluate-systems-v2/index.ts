@@ -1604,8 +1604,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const primaryMarket: MarketType = primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
-        const execSnapRow = primaryMarket === "LINE" ? execLine : execH2H;
+        const primaryMarket: MarketType =
+          primaryLeg.leg_type === "TOTALS" ? "TOTALS" :
+          primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
+        const execSnapRow =
+          primaryMarket === "TOTALS" ? execTotals :
+          primaryMarket === "LINE" ? execLine : execH2H;
         const execHas = hasMarketData(execSnapRow, primaryMarket);
 
         let signalStatus: string = "PENDING";
@@ -1619,11 +1623,22 @@ Deno.serve(async (req) => {
             const side = primaryLeg.side as Side;
             execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_price : execSnapRow!.exec_best_away_price;
             execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_book : execSnapRow!.exec_best_away_book;
+          } else if (primaryMarket === "TOTALS") {
+            const side = primaryLeg.side as Side;
+            if (side === "OVER") {
+              execBestPrice = execSnapRow!.exec_best_over_price;
+              execBestBook = execSnapRow!.exec_best_over_book;
+            } else {
+              execBestPrice = execSnapRow!.exec_best_under_price;
+              execBestBook = execSnapRow!.exec_best_under_book;
+            }
+            if (execSnapRow!.exec_best_total_line !== null) {
+              lineAtBet = execSnapRow!.exec_best_total_line;
+            }
           } else {
             const side = primaryLeg.side as Side;
             execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_line_price : execSnapRow!.exec_best_away_line_price;
             execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_line_book : execSnapRow!.exec_best_away_line_book;
-            // For LINE execution, use execution snapshot line if available
             if (execSnapRow) {
               const execLineVal = side === "HOME" ? execSnapRow.exec_best_home_line : execSnapRow.exec_best_away_line;
               if (execLineVal !== null) lineAtBet = execLineVal;

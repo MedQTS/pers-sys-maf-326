@@ -360,7 +360,7 @@ Deno.serve(async (req) => {
     // system priority (cascade)
     const { data: pri, error: priErr } = await supabase
       .from("pers_sys_system_priority")
-      .select("system_code, rank, dominates_match, allow_stack, max_exposure_pct, tie_break");
+      .select("system_code, rank, collision_rank, dominates_match, allow_stack, max_exposure_pct, tie_break");
 
     if (priErr) throw priErr;
 
@@ -377,7 +377,15 @@ Deno.serve(async (req) => {
       ((pri || []) as any[]).filter((p) => !!p.dominates_match).map((p) => p.system_code)
     );
 
-    // per-game dominance latch (filled as we evaluate)
+    // A system is in the side/line collision queue only if collision_rank is not null
+    // AND its primary market is H2H or LINE. TOTALS systems (e.g. SYS_8) stay outside.
+    const isInCollisionQueue = (sysCode: string, primaryMarket: string): boolean => {
+      const p = priByCode.get(sysCode);
+      if (!p || p.collision_rank == null) return false;
+      return primaryMarket === "H2H" || primaryMarket === "LINE";
+    };
+
+    // per-game side/line dominance latch (filled as we evaluate, only for collision-queue systems)
     const dominatedByGame: Record<string, string> = {};
 
     // upcoming games

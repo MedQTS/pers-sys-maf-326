@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type MarketType = "H2H" | "LINE";
-type Side = "HOME" | "AWAY";
+type MarketType = "H2H" | "LINE" | "TOTALS";
+type Side = "HOME" | "AWAY" | "OVER" | "UNDER";
 type Status = "READY" | "PENDING" | "FAIL" | "BLOCKED";
 
 type SnapshotRow = {

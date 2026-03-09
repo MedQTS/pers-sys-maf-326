@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      email_alert_runs: {
+        Row: {
+          alert_hash: string
+          created_at: string
+          game_id: string
+          id: string
+          snapshot_type: string
+        }
+        Insert: {
+          alert_hash: string
+          created_at?: string
+          game_id: string
+          id?: string
+          snapshot_type: string
+        }
+        Update: {
+          alert_hash?: string
+          created_at?: string
+          game_id?: string
+          id?: string
+          snapshot_type?: string
+        }
+        Relationships: []
+      }
       pers_sys_bets: {
         Row: {
           bankroll_snapshot: number | null

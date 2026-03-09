@@ -1,19 +1,23 @@
 
 
-## Plan: Replace Overlay Block with Full SYS_2 Spec
+## Add Bankroll Display to Header
 
-### What changes
-**File**: `supabase/functions/pers-sys-evaluate-systems-v2/index.ts` (lines 1084-1168)
+**Goal:** Show current balance and starting bankroll in the top-right of the sticky header, visible on all runner pages.
 
-Replace the entire overlay section with the provided block, which adds:
+**Data source:** `pers_sys_bankroll_summary` view — `total_equity` (current balance) and we can derive starting bankroll from `total_equity + open_exposure - available_balance` ... actually `available_balance = total_equity - open_exposure`, so the "starting" bankroll needs clarification. More practically, the ledger `DEPOSIT` sum for the season gives the starting bankroll. But simplest: query `pers_sys_bankroll_summary` for `total_equity` (current) and `available_balance`, and query `pers_sys_ledger` filtering `event_type = 'DEPOSIT'` summing `amount` for starting bankroll.
 
-1. **Stale row cleanup**: When OPEN or T30 snapshots are missing, or when CLV does not pass the threshold, any prior overlay row for that game/system is explicitly deleted
-2. **PENDING support**: If CLV passes but T30 market data is incomplete (`hasMarketData` returns false), the overlay is written as PENDING with `fail: "waiting_overlay_snapshot"`
-3. **Richer reason_json**: Includes `overlay.depends_on`, `overlay_child.clv_rel`, `overlay_child.clv_min`, and `overlay_child.side`
-4. **Upsert pattern**: Uses `.upsert()` with `onConflict: "system_code,game_id,execution_snapshot,leg_type,side"` instead of manual select+insert/update
+Actually, let me check what's available more carefully. The `pers_sys_bankroll_summary` has `total_equity`, `open_exposure`, `available_balance`. The "starting bankroll" is the sum of deposits. We can get that from `pers_sys_ledger` where `event_type = 'DEPOSIT'`.
 
-### Technical detail
-- Lines 1084-1168 are replaced wholesale
-- No other lines in the file change
-- Edge function will be redeployed after edit
+**Change: `src/components/RunnerLayout.tsx` only**
+
+1. Add state for `currentBalance` and `startingBankroll`
+2. On mount, fetch:
+   - `pers_sys_bankroll_summary` filtered by `season_id = currentYear` → `total_equity` as current balance
+   - `pers_sys_ledger` filtered by `season_id = currentYear` and `event_type = 'DEPOSIT'` → sum `amount` as starting bankroll
+3. Render in the header, right-aligned (`ml-auto`), a small block:
+   - Line 1: **Current Balance: $X,XXX.XX** (mono, small text)
+   - Line 2: Starting Bankroll: $X,XXX.XX (muted, smaller text)
+4. Format as AUD with commas and 2 decimal places; show "—" while loading
+
+No new files. No migrations. Single file edit.
 

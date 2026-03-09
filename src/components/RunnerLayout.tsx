@@ -32,7 +32,7 @@ export default function RunnerLayout({ children }: { children: React.ReactNode }
           .from("pers_sys_ledger")
           .select("amount")
           .eq("season_id", season)
-          .eq("event_type", "DEPOSIT"),
+          .in("event_type", ["START", "DEPOSIT"]),
       ]);
 
       if (balRes.data) setCurrentBalance(balRes.data.total_equity);

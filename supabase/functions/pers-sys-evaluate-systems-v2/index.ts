@@ -1806,8 +1806,8 @@ Deno.serve(async (req) => {
 
         if (wrote) signalsCreated++;
 
-        // latch dominance for this game if applicable
-        if (signalStatus === "READY" && dominatesByCode.has(system_code) && !dominatedByGame[g.id]) {
+        // latch dominance for this game if applicable (only for collision-queue systems)
+        if (signalStatus === "READY" && dominatesByCode.has(system_code) && !dominatedByGame[g.id] && isInCollisionQueue(system_code, primaryMarket)) {
           dominatedByGame[g.id] = system_code;
         }
 

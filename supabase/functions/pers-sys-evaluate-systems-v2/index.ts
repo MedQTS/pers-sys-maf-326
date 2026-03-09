@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type MarketType = "H2H" | "LINE";
-type Side = "HOME" | "AWAY";
+type MarketType = "H2H" | "LINE" | "TOTALS";
+type Side = "HOME" | "AWAY" | "OVER" | "UNDER";
 type Status = "READY" | "PENDING" | "FAIL" | "BLOCKED";
 
 type SnapshotRow = {
@@ -34,6 +34,15 @@ type SnapshotRow = {
   exec_best_away_line: number | null;
   exec_best_away_line_price: number | null;
   exec_best_away_line_book: string | null;
+
+  total_line: number | null;
+  over_price: number | null;
+  under_price: number | null;
+  exec_best_total_line: number | null;
+  exec_best_over_price: number | null;
+  exec_best_over_book: string | null;
+  exec_best_under_price: number | null;
+  exec_best_under_book: string | null;
 
   ref_books_observed: any[];
   exec_books_observed: any[];
@@ -77,8 +86,8 @@ type SystemV2Row = {
   system_name?: string | null;
   active?: boolean | null;
 
-  primary_market?: "H2H" | "LINE" | null;
-  overlay_market?: "H2H" | "LINE" | null;
+  primary_market?: "H2H" | "LINE" | "TOTALS" | null;
+  overlay_market?: "H2H" | "LINE" | "TOTALS" | null;
   execution_snapshot?: "OPEN" | "T30" | "T10" | null;
   model_snapshot?: "OPEN" | "T30" | "T10" | null;
 
@@ -176,6 +185,31 @@ function buildLegLine(args: {
     system_code: args.system_code,
     snapshot_type: args.snapshot_type,
     leg_type: "LINE",
+    side: args.side,
+    line_at_bet: args.line_at_bet ?? null,
+    ref_price: args.ref_price ?? null,
+    exec_best_price: args.exec_best_price ?? null,
+    exec_best_book: args.exec_best_book ?? null,
+    ref_books_observed: args.ref_books_observed ?? [],
+    exec_books_observed: args.exec_books_observed ?? [],
+  };
+}
+
+function buildLegTotals(args: {
+  system_code: string;
+  snapshot_type: string;
+  side: "OVER" | "UNDER";
+  line_at_bet: number | null;
+  ref_price: number | null;
+  exec_best_price: number | null;
+  exec_best_book: string | null;
+  ref_books_observed?: any[];
+  exec_books_observed?: any[];
+}) {
+  return {
+    system_code: args.system_code,
+    snapshot_type: args.snapshot_type,
+    leg_type: "TOTALS",
     side: args.side,
     line_at_bet: args.line_at_bet ?? null,
     ref_price: args.ref_price ?? null,
@@ -290,6 +324,7 @@ async function getLossLikeStreakBeforeGame(args: {
 function hasMarketData(s: SnapshotRow | null, market: MarketType) {
   if (!s) return false;
   if (market === "H2H") return !!(s.home_price && s.away_price);
+  if (market === "TOTALS") return s.total_line !== null && !!(s.over_price && s.under_price);
   return s.home_line !== null && s.away_line !== null && !!(s.home_line_price && s.away_line_price);
 }
 
@@ -628,10 +663,13 @@ Deno.serve(async (req) => {
 
         const openH2H = pickSnap(gameSnaps, "OPEN", "H2H");
         const openLine = pickSnap(gameSnaps, "OPEN", "LINE");
+        const openTotals = pickSnap(gameSnaps, "OPEN", "TOTALS");
         const modelH2H = pickSnap(gameSnaps, rulesSnap, "H2H");
         const modelLine = pickSnap(gameSnaps, rulesSnap, "LINE");
+        const modelTotals = pickSnap(gameSnaps, rulesSnap, "TOTALS");
         const execH2H = pickSnap(gameSnaps, execSnap, "H2H");
         const execLine = pickSnap(gameSnaps, execSnap, "LINE");
+        const execTotals = pickSnap(gameSnaps, execSnap, "TOTALS");
 
         const reason: Record<string, any> = {
           system_code,
@@ -713,7 +751,11 @@ Deno.serve(async (req) => {
             c === "open_band" ||
             c === "odds_band" ||
             c === "excluded_state" ||
-            c === "not_lost_prior"
+            c === "not_lost_prior" ||
+            c === "totals_move_lt_3" ||
+            c === "totals_band" ||
+            c === "missing_totals_data" ||
+            c === "missing_totals_line"
           ) {
             return true;
           }
@@ -1472,6 +1514,95 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ==============================
+        // SYS_8 — Totals Over Model
+        // ==============================
+        if (system_code === "SYS_8") {
+          if (!openTotals || !modelTotals) {
+            modelPass = false;
+            reason.fail = "missing_totals_data";
+          } else {
+            const openTotal = openTotals.total_line;
+            const modelTotal = modelTotals.total_line;
+
+            if (openTotal === null || modelTotal === null) {
+              modelPass = false;
+              reason.fail = "missing_totals_line";
+            } else {
+              const totalsMove = modelTotal - openTotal;
+              reason.total_move = totalsMove;
+              reason.open_total = openTotal;
+              reason.model_total = modelTotal;
+
+              if (totalsMove < 3) {
+                modelPass = false;
+                reason.fail = "totals_move_lt_3";
+              } else if (modelTotal < 165 || modelTotal >= 175) {
+                modelPass = false;
+                reason.fail = "totals_band";
+              }
+
+              if (modelPass) {
+                let stake = 1.0;
+                reason.amplifiers = [];
+
+                const ampCfg = sys.amplifier_config ?? {};
+
+                // Day game boost
+                const kickoffHour = new Date(g.start_time_aet).getHours();
+                if (kickoffHour < 18 && ampCfg.day_game_boost) {
+                  stake += Number(ampCfg.day_game_boost);
+                  reason.amplifiers.push("day_game");
+                }
+
+                // Marvel boost
+                if (g.venue && g.venue.toLowerCase().includes("marvel") && ampCfg.marvel_boost) {
+                  stake += Number(ampCfg.marvel_boost);
+                  reason.amplifiers.push("marvel");
+                }
+
+                // Early agreement boost
+                if (execTotals && execTotals.total_line !== null && openTotal !== null && ampCfg.early_agreement_boost) {
+                  const earlyMove = execTotals.total_line - openTotal;
+                  reason.early_move = earlyMove;
+                  if (earlyMove >= 1.5) {
+                    stake += Number(ampCfg.early_agreement_boost);
+                    reason.amplifiers.push("early_agreement");
+                  }
+                }
+
+                // Strong momentum boost
+                if (totalsMove >= 4.5 && ampCfg.strong_momentum_boost) {
+                  stake += Number(ampCfg.strong_momentum_boost);
+                  reason.amplifiers.push("strong_momentum");
+                }
+
+                // Cap stake
+                const stakingCfg = sys.staking_config ?? {};
+                if (stakingCfg.max_pct_bankroll && stake > Number(stakingCfg.max_pct_bankroll)) {
+                  stake = Number(stakingCfg.max_pct_bankroll);
+                }
+
+                reason.recommended_units = stake;
+
+                reason.legs.push(
+                  buildLegTotals({
+                    system_code,
+                    snapshot_type: modelSnap,
+                    side: "OVER",
+                    line_at_bet: modelTotal,
+                    ref_price: modelTotals.over_price ?? null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    ref_books_observed: modelTotals.ref_books_observed ?? [],
+                    exec_books_observed: modelTotals.exec_books_observed ?? [],
+                  })
+                );
+              }
+            }
+          }
+        }
+
         // -------------------------
         // READY vs PENDING vs SKIP (don't write FAILs)
         // -------------------------
@@ -1502,8 +1633,12 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const primaryMarket: MarketType = primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
-        const execSnapRow = primaryMarket === "LINE" ? execLine : execH2H;
+        const primaryMarket: MarketType =
+          primaryLeg.leg_type === "TOTALS" ? "TOTALS" :
+          primaryLeg.leg_type === "LINE" ? "LINE" : "H2H";
+        const execSnapRow =
+          primaryMarket === "TOTALS" ? execTotals :
+          primaryMarket === "LINE" ? execLine : execH2H;
         const execHas = hasMarketData(execSnapRow, primaryMarket);
 
         let signalStatus: string = "PENDING";
@@ -1517,11 +1652,22 @@ Deno.serve(async (req) => {
             const side = primaryLeg.side as Side;
             execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_price : execSnapRow!.exec_best_away_price;
             execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_book : execSnapRow!.exec_best_away_book;
+          } else if (primaryMarket === "TOTALS") {
+            const side = primaryLeg.side as Side;
+            if (side === "OVER") {
+              execBestPrice = execSnapRow!.exec_best_over_price;
+              execBestBook = execSnapRow!.exec_best_over_book;
+            } else {
+              execBestPrice = execSnapRow!.exec_best_under_price;
+              execBestBook = execSnapRow!.exec_best_under_book;
+            }
+            if (execSnapRow!.exec_best_total_line !== null) {
+              lineAtBet = execSnapRow!.exec_best_total_line;
+            }
           } else {
             const side = primaryLeg.side as Side;
             execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_line_price : execSnapRow!.exec_best_away_line_price;
             execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_line_book : execSnapRow!.exec_best_away_line_book;
-            // For LINE execution, use execution snapshot line if available
             if (execSnapRow) {
               const execLineVal = side === "HOME" ? execSnapRow.exec_best_home_line : execSnapRow.exec_best_away_line;
               if (execLineVal !== null) lineAtBet = execLineVal;

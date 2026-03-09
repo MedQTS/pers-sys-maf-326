@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
     const dominatedByGame: Record<string, string> = {};
 
     // upcoming games
-    const { data: upcomingGames, error: gamesErr } = await supabase
+    let gamesQuery = supabase
       .from("pers_sys_games")
       .select(`
         *,
@@ -354,11 +354,21 @@ Deno.serve(async (req) => {
         away_team:pers_sys_teams!pers_sys_games_away_team_id_fkey(id, canonical_name, home_state)
       `)
       .eq("season", season)
-      .eq("status", "SCHEDULED")
-      .gte("start_time_aet", startIso)
-      .lte("start_time_aet", endIso)
+      .eq("status", "SCHEDULED");
+
+    if (onlyGameId) {
+      gamesQuery = gamesQuery.eq("id", onlyGameId);
+    } else {
+      gamesQuery = gamesQuery
+        .gte("start_time_aet", startIso)
+        .lte("start_time_aet", endIso);
+    }
+
+    gamesQuery = gamesQuery
       .order("start_time_aet", { ascending: true })
       .limit(200);
+
+    const { data: upcomingGames, error: gamesErr } = await gamesQuery;
 
     if (gamesErr) throw gamesErr;
 

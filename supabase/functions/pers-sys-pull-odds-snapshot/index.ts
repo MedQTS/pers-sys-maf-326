@@ -74,6 +74,34 @@ function pickBestLineAtAnchor(
   return best;
 }
 
+// Totals sufficiency thresholds by snapshot type
+const TOTALS_MIN_BOOKS: Record<string, number> = {
+  OPEN: 3,
+  T60: 2,
+  T30: 2,
+  T10: 1,
+  CURRENT: 1,
+};
+
+// Best-exec price picker (highest price, tie-break by exec priority)
+function pickBestExecPrice(
+  candidates: { book: string; price: number }[]
+): { book: string; price: number } | null {
+  if (!candidates.length) return null;
+  let best = candidates[0];
+  for (let i = 1; i < candidates.length; i++) {
+    const c = candidates[i];
+    if (
+      c.price > best.price ||
+      (c.price === best.price &&
+        (execPriority.get(c.book) ?? 9999) < (execPriority.get(best.book) ?? 9999))
+    ) {
+      best = c;
+    }
+  }
+  return best;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
@@ -117,27 +145,21 @@ Deno.serve(async (req) => {
     let cutoffEnd: Date;
 
     if (snapshotType === "OPEN") {
-      // Broad future window for capturing opening markets
       cutoffStart = new Date(now.getTime());
       cutoffEnd = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
     } else if (snapshotType === "CURRENT") {
-      // Broad monitoring window
       cutoffStart = new Date(now.getTime());
       cutoffEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     } else if (snapshotType === "T60") {
-      // Target games roughly 60 minutes before bounce
       cutoffStart = new Date(now.getTime() + 45 * 60 * 1000);
       cutoffEnd = new Date(now.getTime() + 75 * 60 * 1000);
     } else if (snapshotType === "T30") {
-      // Target games roughly 30 minutes before bounce
       cutoffStart = new Date(now.getTime() + 15 * 60 * 1000);
       cutoffEnd = new Date(now.getTime() + 45 * 60 * 1000);
     } else if (snapshotType === "T10") {
-      // Target games just before bounce
       cutoffStart = new Date(now.getTime());
       cutoffEnd = new Date(now.getTime() + 20 * 60 * 1000);
     } else {
-      // Fallback safety
       cutoffStart = new Date(now.getTime());
       cutoffEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     }
@@ -202,7 +224,7 @@ Deno.serve(async (req) => {
       };
     }
 
-    const oddsUrl = `https://api.the-odds-api.com/v4/sports/aussierules_afl/odds/?apiKey=${apiKey}&regions=au&markets=h2h,spreads&oddsFormat=decimal`;
+    const oddsUrl = `https://api.the-odds-api.com/v4/sports/aussierules_afl/odds/?apiKey=${apiKey}&regions=au&markets=h2h,spreads,totals&oddsFormat=decimal`;
     const oddsResp = await fetch(oddsUrl);
     if (!oddsResp.ok) {
       const errText = await oddsResp.text();
@@ -210,7 +232,6 @@ Deno.serve(async (req) => {
     }
     const oddsEvents = await oddsResp.json();
 
-    // Fast path: exact id match if game.oddsapi_event_id already known
     const oddsEventById = new Map<string, any>();
     if (Array.isArray(oddsEvents)) {
       for (const ev of oddsEvents) {
@@ -225,12 +246,10 @@ Deno.serve(async (req) => {
 
     async function writeSnapshot(row: Record<string, unknown>) {
       if (snapshotType === "OPEN") {
-        // OPEN is immutable: write once; if it already exists, do nothing.
         return await supabase
           .from("pers_sys_market_snapshots")
           .insert(row as any, { onConflict: SNAPSHOT_CONFLICT, ignoreDuplicates: true } as any);
       }
-      // Evaluator snapshots (T60/T30/T10) + monitoring snapshot (CURRENT) can upsert safely.
       return await supabase
         .from("pers_sys_market_snapshots")
         .upsert(row as any, { onConflict: SNAPSHOT_CONFLICT });
@@ -247,8 +266,10 @@ Deno.serve(async (req) => {
     let skipped_no_ref_h2h = 0;
     let skipped_no_ref_line = 0;
     let skipped_no_exec_books = 0;
+    let skipped_no_ref_totals = 0;
 
     const TOL_MS = 6 * 60 * 60 * 1000;
+    const totalsMinBooks = TOTALS_MIN_BOOKS[snapshotType] ?? 1;
 
     for (const game of eligibleGames) {
       const expectedHome = teamById[game.home_team_id];
@@ -257,7 +278,6 @@ Deno.serve(async (req) => {
 
       const gameTs = new Date(game.start_time_aet).getTime();
 
-      // 1) Prefer exact id match (most reliable)
       let matchedEvent: any | undefined = undefined;
 
       const existingEventId = String(game.oddsapi_event_id || "").trim();
@@ -265,7 +285,6 @@ Deno.serve(async (req) => {
         matchedEvent = oddsEventById.get(existingEventId);
       }
 
-      // 2) Fallback to name + time tolerance match
       if (!matchedEvent) {
         matchedEvent = (oddsEvents as any[]).find((ev: any) => {
           const home = normName(String(ev.home_team || ""));
@@ -294,9 +313,7 @@ Deno.serve(async (req) => {
 
       const bookmakers = matchedEvent.bookmakers || [];
 
-      // Stage 3 Step 2: split reference median vs best-exec
-
-      // Reference (median) arrays
+      // --- Reference (median) arrays ---
       const refH2hBooks = new Set<string>();
       const refHomePrices: number[] = [];
       const refAwayPrices: number[] = [];
@@ -307,7 +324,7 @@ Deno.serve(async (req) => {
       const refHomeLinePrices: number[] = [];
       const refAwayLinePrices: number[] = [];
 
-      // Execution (best-exec) picks/candidates
+      // --- Execution (best-exec) picks/candidates ---
       const execH2hBooks = new Set<string>();
       let execBestHomePrice: number | null = null;
       let execBestHomeBook: string | null = null;
@@ -317,6 +334,16 @@ Deno.serve(async (req) => {
       const execLineBooks = new Set<string>();
       const execHomeLineCandidates: LineCandidate[] = [];
       const execAwayLineCandidates: LineCandidate[] = [];
+
+      // --- Totals ---
+      const refTotalsBooks = new Set<string>();
+      const refTotalLines: number[] = [];
+      const refOverPrices: number[] = [];
+      const refUnderPrices: number[] = [];
+
+      const execTotalsBooks = new Set<string>();
+      const execOverCandidates: { book: string; price: number }[] = [];
+      const execUnderCandidates: { book: string; price: number }[] = [];
 
       for (const bk of bookmakers) {
         const bmKey = String(bk.key || "").trim();
@@ -397,13 +424,47 @@ Deno.serve(async (req) => {
               }
             }
           }
+          if (m.key === "totals") {
+            // Parse totals: need both Over and Under with matching point
+            const outcomes = m.outcomes || [];
+            const overOutcome = outcomes.find((o: any) => String(o.name || "").toLowerCase() === "over");
+            const underOutcome = outcomes.find((o: any) => String(o.name || "").toLowerCase() === "under");
+
+            if (!overOutcome || !underOutcome) continue;
+
+            const overPoint = Number(overOutcome.point);
+            const underPoint = Number(underOutcome.point);
+            const overPrice = Number(overOutcome.price);
+            const underPrice = Number(underOutcome.price);
+
+            // Validate: both must have finite values and share the same point
+            if (
+              !Number.isFinite(overPoint) || !Number.isFinite(underPoint) ||
+              !Number.isFinite(overPrice) || !Number.isFinite(underPrice) ||
+              overPoint !== underPoint
+            ) continue;
+
+            if (bmKey) {
+              if (isRef) {
+                refTotalsBooks.add(bmKey);
+                refTotalLines.push(overPoint);
+                refOverPrices.push(overPrice);
+                refUnderPrices.push(underPrice);
+              }
+              if (isExec) {
+                execTotalsBooks.add(bmKey);
+                execOverCandidates.push({ book: bmKey, price: overPrice });
+                execUnderCandidates.push({ book: bmKey, price: underPrice });
+              }
+            }
+          }
         }
       }
 
+      // ---- Store H2H snapshot ----
       const homeH2hMedian = median(refHomePrices);
       const awayH2hMedian = median(refAwayPrices);
 
-      // Store H2H snapshot (reference medians + best-exec)
       if (
         refHomePrices.length > 0 &&
         refAwayPrices.length > 0 &&
@@ -433,7 +494,7 @@ Deno.serve(async (req) => {
         skipped_no_ref_h2h++;
       }
 
-      // Store LINE snapshot (reference medians + best-exec anchored to reference median line)
+      // ---- Store LINE snapshot ----
       if (
         refHomeLines.length > 0 &&
         refAwayLines.length > 0 &&
@@ -470,6 +531,47 @@ Deno.serve(async (req) => {
       } else {
         skipped_no_ref_line++;
       }
+
+      // ---- Store TOTALS snapshot ----
+      if (refTotalsBooks.size >= totalsMinBooks) {
+        const totalLineMed = median(refTotalLines);
+        const overPriceMed = median(refOverPrices);
+        const underPriceMed = median(refUnderPrices);
+
+        // Guardrails
+        if (
+          Number.isFinite(totalLineMed) && totalLineMed > 0 &&
+          Number.isFinite(overPriceMed) && overPriceMed > 0 &&
+          Number.isFinite(underPriceMed) && underPriceMed > 0
+        ) {
+          const bestOver = pickBestExecPrice(execOverCandidates);
+          const bestUnder = pickBestExecPrice(execUnderCandidates);
+
+          const { error } = await writeSnapshot({
+            game_id: game.id,
+            snapshot_type: snapshotType,
+            market_type: "TOTALS",
+            agg_method: "median",
+            books_used: Array.from(refTotalsBooks),
+            ref_books_observed: Array.from(refTotalsBooks),
+            exec_books_observed: Array.from(execTotalsBooks),
+            total_line: Number(totalLineMed.toFixed(3)),
+            over_price: Number(overPriceMed.toFixed(3)),
+            under_price: Number(underPriceMed.toFixed(3)),
+            exec_best_total_line: totalLineMed ? Number(totalLineMed.toFixed(3)) : null,
+            exec_best_over_price: bestOver ? bestOver.price : null,
+            exec_best_over_book: bestOver ? bestOver.book : null,
+            exec_best_under_price: bestUnder ? bestUnder.price : null,
+            exec_best_under_book: bestUnder ? bestUnder.book : null,
+            snapshot_ts: snapshotTs,
+          });
+          if (!error) snapshotsStored += 1;
+        } else {
+          skipped_no_ref_totals++;
+        }
+      } else {
+        skipped_no_ref_totals++;
+      }
     }
 
     return new Response(
@@ -485,6 +587,7 @@ Deno.serve(async (req) => {
         skipped_no_event_match,
         skipped_no_ref_h2h,
         skipped_no_ref_line,
+        skipped_no_ref_totals,
         skipped_no_exec_books,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -396,8 +396,9 @@ function GameCard(props: {
   showPending: boolean;
   variant: "ready" | "normal" | "live" | "placed";
   onRefresh: () => Promise<void> | void;
+  stakePreviewBySignal: Record<string, StakePreviewRow>;
 }) {
-  const { game, readySignals, pendingSignals, betPlaced, placedBets, showPending, variant, onRefresh } = props;
+  const { game, readySignals, pendingSignals, betPlaced, placedBets, showPending, variant, onRefresh, stakePreviewBySignal } = props;
 
   const date = new Date(game.start_time_aet);
   const homeTeam = (game.home_team as any)?.canonical_name || "?";

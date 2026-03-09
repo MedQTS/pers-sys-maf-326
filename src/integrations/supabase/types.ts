@@ -1000,6 +1000,8 @@ export type Database = {
       }
     }
     Functions: {
+      _round_to_5: { Args: { p_value: number }; Returns: number }
+      _round_to_quarter: { Args: { p_value: number }; Returns: number }
       accept_leg_create_bet: {
         Args: {
           p_exec_best_book: string

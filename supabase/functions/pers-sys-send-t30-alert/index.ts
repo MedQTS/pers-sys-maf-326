@@ -355,7 +355,7 @@ Deno.serve(async (req) => {
     const unsettledBets = (betsData ?? []) as BetRow[];
 
     const { data: priorItemsData, error: priorItemsErr } = await supabase
-      .from("email_alert_items")
+      .from("pers_sys_email_alert_items")
       .select("id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at")
       .in("game_id", gameIds)
       .eq("snapshot_type", snapshotType)

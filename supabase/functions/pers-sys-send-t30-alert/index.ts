@@ -560,7 +560,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const runGameId = actionRows[0]?.signal.game_id ?? previousRows[0]?.signal.game_id ?? gameIds[0];
+    const runGameId = gameId;
 
     const { data: insertedRun, error: runInsertErr } = await supabase
       .from("pers_sys_email_alert_runs")

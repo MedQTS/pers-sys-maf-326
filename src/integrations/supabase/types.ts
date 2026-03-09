@@ -14,81 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      email_alert_items: {
-        Row: {
-          bet_fingerprint: string
-          book: string | null
-          change_hash: string
-          created_at: string
-          game_id: string
-          id: string
-          leg_type: string
-          line_at_bet: number | null
-          price: number | null
-          side: string
-          snapshot_type: string
-          stake_amount: number | null
-          status_label: string
-          system_code: string
-        }
-        Insert: {
-          bet_fingerprint: string
-          book?: string | null
-          change_hash: string
-          created_at?: string
-          game_id: string
-          id?: string
-          leg_type: string
-          line_at_bet?: number | null
-          price?: number | null
-          side: string
-          snapshot_type: string
-          stake_amount?: number | null
-          status_label?: string
-          system_code: string
-        }
-        Update: {
-          bet_fingerprint?: string
-          book?: string | null
-          change_hash?: string
-          created_at?: string
-          game_id?: string
-          id?: string
-          leg_type?: string
-          line_at_bet?: number | null
-          price?: number | null
-          side?: string
-          snapshot_type?: string
-          stake_amount?: number | null
-          status_label?: string
-          system_code?: string
-        }
-        Relationships: []
-      }
-      email_alert_runs: {
-        Row: {
-          alert_hash: string
-          created_at: string
-          game_id: string
-          id: string
-          snapshot_type: string
-        }
-        Insert: {
-          alert_hash: string
-          created_at?: string
-          game_id: string
-          id?: string
-          snapshot_type: string
-        }
-        Update: {
-          alert_hash?: string
-          created_at?: string
-          game_id?: string
-          id?: string
-          snapshot_type?: string
-        }
-        Relationships: []
-      }
       pers_sys_bets: {
         Row: {
           bankroll_snapshot: number | null
@@ -163,6 +88,81 @@ export type Database = {
             referencedColumns: ["system_code"]
           },
         ]
+      }
+      pers_sys_email_alert_items: {
+        Row: {
+          bet_fingerprint: string
+          book: string | null
+          change_hash: string
+          created_at: string
+          game_id: string
+          id: string
+          leg_type: string
+          line_at_bet: number | null
+          price: number | null
+          side: string
+          snapshot_type: string
+          stake_amount: number | null
+          status_label: string
+          system_code: string
+        }
+        Insert: {
+          bet_fingerprint: string
+          book?: string | null
+          change_hash: string
+          created_at?: string
+          game_id: string
+          id?: string
+          leg_type: string
+          line_at_bet?: number | null
+          price?: number | null
+          side: string
+          snapshot_type: string
+          stake_amount?: number | null
+          status_label?: string
+          system_code: string
+        }
+        Update: {
+          bet_fingerprint?: string
+          book?: string | null
+          change_hash?: string
+          created_at?: string
+          game_id?: string
+          id?: string
+          leg_type?: string
+          line_at_bet?: number | null
+          price?: number | null
+          side?: string
+          snapshot_type?: string
+          stake_amount?: number | null
+          status_label?: string
+          system_code?: string
+        }
+        Relationships: []
+      }
+      pers_sys_email_alert_runs: {
+        Row: {
+          alert_hash: string
+          created_at: string
+          game_id: string
+          id: string
+          snapshot_type: string
+        }
+        Insert: {
+          alert_hash: string
+          created_at?: string
+          game_id: string
+          id?: string
+          snapshot_type: string
+        }
+        Update: {
+          alert_hash?: string
+          created_at?: string
+          game_id?: string
+          id?: string
+          snapshot_type?: string
+        }
+        Relationships: []
       }
       pers_sys_games: {
         Row: {

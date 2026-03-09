@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_WINDOW_STATUSES = ["ON_TIME", "DEGRADED_LATE", "MISSED_WINDOW"] as const;
+const VALID_WINDOW_STATUSES = ["ON_TIME", "DEGRADED_LATE", "MISSED_WINDOW", "TOO_EARLY"] as const;
 type WindowStatus = typeof VALID_WINDOW_STATUSES[number];
 
 type StepResult = {

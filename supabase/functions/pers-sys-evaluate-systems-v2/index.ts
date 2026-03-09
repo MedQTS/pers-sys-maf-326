@@ -1485,6 +1485,95 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ==============================
+        // SYS_8 — Totals Over Model
+        // ==============================
+        if (system_code === "SYS_8") {
+          if (!openTotals || !modelTotals) {
+            modelPass = false;
+            reason.fail = "missing_totals_data";
+          } else {
+            const openTotal = openTotals.total_line;
+            const modelTotal = modelTotals.total_line;
+
+            if (openTotal === null || modelTotal === null) {
+              modelPass = false;
+              reason.fail = "missing_totals_line";
+            } else {
+              const totalsMove = modelTotal - openTotal;
+              reason.total_move = totalsMove;
+              reason.open_total = openTotal;
+              reason.model_total = modelTotal;
+
+              if (totalsMove < 3) {
+                modelPass = false;
+                reason.fail = "totals_move_lt_3";
+              } else if (modelTotal < 165 || modelTotal >= 175) {
+                modelPass = false;
+                reason.fail = "totals_band";
+              }
+
+              if (modelPass) {
+                let stake = 1.0;
+                reason.amplifiers = [];
+
+                const ampCfg = sys.amplifier_config ?? {};
+
+                // Day game boost
+                const kickoffHour = new Date(g.start_time_aet).getHours();
+                if (kickoffHour < 18 && ampCfg.day_game_boost) {
+                  stake += Number(ampCfg.day_game_boost);
+                  reason.amplifiers.push("day_game");
+                }
+
+                // Marvel boost
+                if (g.venue && g.venue.toLowerCase().includes("marvel") && ampCfg.marvel_boost) {
+                  stake += Number(ampCfg.marvel_boost);
+                  reason.amplifiers.push("marvel");
+                }
+
+                // Early agreement boost
+                if (execTotals && execTotals.total_line !== null && openTotal !== null && ampCfg.early_agreement_boost) {
+                  const earlyMove = execTotals.total_line - openTotal;
+                  reason.early_move = earlyMove;
+                  if (earlyMove >= 1.5) {
+                    stake += Number(ampCfg.early_agreement_boost);
+                    reason.amplifiers.push("early_agreement");
+                  }
+                }
+
+                // Strong momentum boost
+                if (totalsMove >= 4.5 && ampCfg.strong_momentum_boost) {
+                  stake += Number(ampCfg.strong_momentum_boost);
+                  reason.amplifiers.push("strong_momentum");
+                }
+
+                // Cap stake
+                const stakingCfg = sys.staking_config ?? {};
+                if (stakingCfg.max_pct_bankroll && stake > Number(stakingCfg.max_pct_bankroll)) {
+                  stake = Number(stakingCfg.max_pct_bankroll);
+                }
+
+                reason.recommended_units = stake;
+
+                reason.legs.push(
+                  buildLegTotals({
+                    system_code,
+                    snapshot_type: modelSnap,
+                    side: "OVER",
+                    line_at_bet: modelTotal,
+                    ref_price: modelTotals.over_price ?? null,
+                    exec_best_price: null,
+                    exec_best_book: null,
+                    ref_books_observed: modelTotals.ref_books_observed ?? [],
+                    exec_books_observed: modelTotals.exec_books_observed ?? [],
+                  })
+                );
+              }
+            }
+          }
+        }
+
         // -------------------------
         // READY vs PENDING vs SKIP (don't write FAILs)
         // -------------------------

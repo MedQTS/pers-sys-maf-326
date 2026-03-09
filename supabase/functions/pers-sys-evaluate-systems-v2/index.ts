@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
     const horizonDays = Number(body.horizon_days ?? 10);
 
     const now = new Date();
-    const startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const startIso = now.toISOString();
     const endIso = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000).toISOString();
 
     const supabase = createClient(

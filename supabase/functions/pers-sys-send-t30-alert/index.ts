@@ -284,13 +284,49 @@ Deno.serve(async (req) => {
 
     const snapshotType = "T30";
     const dryRun = body["dry_run"] === true;
-    const onlyGameId = typeof body["game_id"] === "string" && body["game_id"].trim()
-      ? body["game_id"].trim()
-      : null;
+    const gameId = typeof body["game_id"] === "string" ? body["game_id"].trim() : "";
+
+    if (!gameId) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "missing_game_id" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // Validate game exists, is scheduled, and hasn't started
+    const { data: gameCheck, error: gameCheckErr } = await supabase
+      .from("pers_sys_games")
+      .select("id, status, start_time_aet")
+      .eq("id", gameId)
+      .maybeSingle();
+
+    if (gameCheckErr) throw gameCheckErr;
+
+    if (!gameCheck) {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_found", game_id: gameId }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (gameCheck.status !== "SCHEDULED") {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_scheduled", game_id: gameId, status: gameCheck.status }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (new Date(gameCheck.start_time_aet).getTime() <= Date.now()) {
+      return new Response(
+        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_start_in_past", game_id: gameId }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     let signalsQuery = supabase
       .from("pers_sys_signals_v2")

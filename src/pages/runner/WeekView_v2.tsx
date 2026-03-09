@@ -465,6 +465,7 @@ function GameCard(props: {
               const f = formatLegFromRow(s);
               const r = safeJson(s.reason_json) || {};
               const unitsOverride = s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null;
+              const preview = stakePreviewBySignal[s.id];
 
               return (
                 <div key={s.id} className="flex items-center justify-between gap-3 text-[11px] font-mono">
@@ -472,6 +473,12 @@ function GameCard(props: {
                     <span className="px-2 py-0.5 rounded bg-muted text-foreground">{s.system_code}</span>
                     <span className="text-muted-foreground">{f.market} {f.side}{f.line}</span>
                     <span className="text-muted-foreground">exec: {f.book} @ {f.price}</span>
+                    {preview?.units != null && (
+                      <span className="text-muted-foreground">units: {preview.units}</span>
+                    )}
+                    {preview?.stake_amount != null && (
+                      <span className="text-muted-foreground">stake: ${preview.stake_amount}</span>
+                    )}
                   </div>
                   <button
                     type="button"

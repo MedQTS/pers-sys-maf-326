@@ -388,7 +388,7 @@ Deno.serve(async (req) => {
     const { data: priorItemsData, error: priorItemsErr } = await supabase
       .from("pers_sys_email_alert_items")
       .select("id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at")
-      .in("game_id", gameIds)
+      .eq("game_id", gameId)
       .eq("snapshot_type", snapshotType)
       .order("created_at", { ascending: false });
 

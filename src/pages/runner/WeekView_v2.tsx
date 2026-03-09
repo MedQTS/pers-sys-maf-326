@@ -206,7 +206,8 @@ export default function WeekView_v2() {
                 p_snapshot_type: s.execution_snapshot ?? s.model_snapshot ?? null,
               };
               const { data } = await supabase.rpc("preview_leg_stake", payload);
-              if (data?.ok === true) return { id: s.id, preview: data as StakePreviewRow };
+              const d = data as any;
+              if (d?.ok === true) return { id: s.id, preview: d as StakePreviewRow };
               return null;
             } catch {
               return null;

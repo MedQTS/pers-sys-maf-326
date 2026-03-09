@@ -783,6 +783,7 @@ export type Database = {
       pers_sys_system_priority: {
         Row: {
           allow_stack: boolean
+          collision_rank: number | null
           created_at: string
           dominates_match: boolean
           id: string
@@ -794,6 +795,7 @@ export type Database = {
         }
         Insert: {
           allow_stack?: boolean
+          collision_rank?: number | null
           created_at?: string
           dominates_match?: boolean
           id?: string
@@ -805,6 +807,7 @@ export type Database = {
         }
         Update: {
           allow_stack?: boolean
+          collision_rank?: number | null
           created_at?: string
           dominates_match?: boolean
           id?: string

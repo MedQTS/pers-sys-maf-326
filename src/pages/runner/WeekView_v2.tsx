@@ -179,7 +179,7 @@ export default function WeekView_v2() {
 
       const { data: sigs, error: sigErr } = await supabase
         .from("pers_sys_signals_v2")
-        .select(`id, game_id, system_code, model_snapshot, execution_snapshot, model_market, execution_market, pass, signal_status, leg_type, side, line_at_bet, ref_price, exec_best_price, exec_best_book, recommended_units, recommended_bankroll_pct, reason_json, created_at`)
+        .select(`id, game_id, system_code, model_snapshot, execution_snapshot, model_market, execution_market, pass, signal_status, leg_type, side, line_at_bet, ref_price, exec_best_price, exec_best_book, recommended_units, reason_json, created_at`)
         .in("game_id", gameIds);
 
       if (sigErr) throw sigErr;

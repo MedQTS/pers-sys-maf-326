@@ -328,6 +328,52 @@ function hasMarketData(s: SnapshotRow | null, market: MarketType) {
   return s.home_line !== null && s.away_line !== null && !!(s.home_line_price && s.away_line_price);
 }
 
+function resolveOneUPctForSystem(systemCode: string, stakingConfig: any): number | null {
+  const globalOneU = Number(stakingConfig?.global_1u_pct);
+
+  if (systemCode === "SYS_3" || systemCode === "SYS_7") {
+    const systemOverride = Number(stakingConfig?.system_7_1u_pct);
+    if (Number.isFinite(systemOverride) && systemOverride > 0) return systemOverride;
+    if (Number.isFinite(globalOneU) && globalOneU > 0) return globalOneU;
+    return null;
+  }
+
+  if (Number.isFinite(globalOneU) && globalOneU > 0) return globalOneU;
+  return null;
+}
+
+function toCanonicalBankrollPct(args: {
+  systemCode: string;
+  recommendedUnits: number | null | undefined;
+  stakingConfig: any;
+}): number | null {
+  const { systemCode, stakingConfig } = args;
+  const v = Number(args.recommendedUnits);
+
+  // Unit-based systems normalize via 1u precedence: system override -> global -> null
+  if (systemCode === "SYS_3" || systemCode === "SYS_7") {
+    if (!Number.isFinite(v) || v <= 0) return null;
+    const oneU = resolveOneUPctForSystem(systemCode, stakingConfig);
+    if (!oneU) return null;
+    return Number((v * oneU).toFixed(6));
+  }
+
+  // Percent-style systems currently emit percent-point-like numbers in recommended_units.
+  if (Number.isFinite(v) && v > 0) {
+    return Number((v / 100).toFixed(6));
+  }
+
+  // Fallback for systems that may not set recommended_units (e.g. SYS_4 transitional cases)
+  const cfgRaw =
+    stakingConfig?.base_bankroll_pct ??
+    stakingConfig?.base_pct_bankroll ??
+    stakingConfig?.line_pct_bankroll ??
+    null;
+  const cfg = Number(cfgRaw);
+  if (!Number.isFinite(cfg) || cfg <= 0) return null;
+  return Number((cfg > 1 ? cfg / 100 : cfg).toFixed(6));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -531,6 +577,8 @@ Deno.serve(async (req) => {
       exec_best_price: number | null;
       exec_best_book: string | null;
       recommended_units: number | null;
+      recommended_bankroll_pct: number | null;
+      staking_contract_version: string;
       reason_json: Record<string, any>;
     }) {
       const { error } = await supabase.from("pers_sys_signals_v2").upsert(
@@ -550,6 +598,8 @@ Deno.serve(async (req) => {
           exec_best_price: args.exec_best_price,
           exec_best_book: args.exec_best_book,
           recommended_units: args.recommended_units,
+          recommended_bankroll_pct: args.recommended_bankroll_pct,
+          staking_contract_version: args.staking_contract_version,
           reason_json: args.reason_json,
           evaluated_at: new Date().toISOString(),
         },
@@ -578,6 +628,8 @@ Deno.serve(async (req) => {
       exec_best_price: number | null;
       exec_best_book: string | null;
       recommended_units: number | null;
+      recommended_bankroll_pct: number | null;
+      staking_contract_version: string;
       reason_json: Record<string, any>;
     }) {
       const audit_key = `${args.leg_type ?? "NONE"}:${args.side ?? "NONE"}`;
@@ -605,6 +657,8 @@ Deno.serve(async (req) => {
             exec_best_price: args.exec_best_price,
             exec_best_book: args.exec_best_book,
             recommended_units: args.recommended_units,
+            recommended_bankroll_pct: args.recommended_bankroll_pct,
+            staking_contract_version: args.staking_contract_version,
             reason_json: args.reason_json,
             evaluated_at: new Date().toISOString(),
           },
@@ -1611,6 +1665,19 @@ Deno.serve(async (req) => {
           }
         }
 
+        const recommendedUnits =
+          Number.isFinite(Number(reason.recommended_units))
+            ? Number(reason.recommended_units)
+            : null;
+        const recommendedBankrollPct = toCanonicalBankrollPct({
+          systemCode: system_code,
+          recommendedUnits,
+          stakingConfig: sys.staking_config ?? null,
+        });
+        const stakingContractVersion = "v2_canonical_pct";
+        reason.recommended_bankroll_pct = recommendedBankrollPct;
+        reason.staking_contract_version = stakingContractVersion;
+
         // -------------------------
         // READY vs PENDING vs SKIP (don't write FAILs)
         // -------------------------
@@ -1636,6 +1703,8 @@ Deno.serve(async (req) => {
             exec_best_price: null,
             exec_best_book: null,
             recommended_units: reason.recommended_units ?? null,
+            recommended_bankroll_pct: recommendedBankrollPct,
+            staking_contract_version: stakingContractVersion,
             reason_json: reason,
           });
           continue;
@@ -1701,6 +1770,8 @@ Deno.serve(async (req) => {
             exec_best_price: null,
             exec_best_book: null,
             recommended_units: reason.recommended_units ?? null,
+            recommended_bankroll_pct: recommendedBankrollPct,
+            staking_contract_version: stakingContractVersion,
             reason_json: reason,
           });
           continue;
@@ -1749,6 +1820,8 @@ Deno.serve(async (req) => {
             exec_best_price: null,
             exec_best_book: null,
             recommended_units: reason.recommended_units ?? null,
+            recommended_bankroll_pct: recommendedBankrollPct,
+            staking_contract_version: stakingContractVersion,
             reason_json: {
               ...reason,
               status: "FAIL",
@@ -1782,6 +1855,8 @@ Deno.serve(async (req) => {
           exec_best_price: execBestPrice,
           exec_best_book: execBestBook,
           recommended_units: reason.recommended_units ?? null,
+          recommended_bankroll_pct: recommendedBankrollPct,
+          staking_contract_version: stakingContractVersion,
           reason_json: reason,
         });
 
@@ -1801,6 +1876,8 @@ Deno.serve(async (req) => {
           exec_best_price: execBestPrice,
           exec_best_book: execBestBook,
           recommended_units: reason.recommended_units ?? null,
+          recommended_bankroll_pct: recommendedBankrollPct,
+          staking_contract_version: stakingContractVersion,
           reason_json: reason,
         });
 
@@ -1836,6 +1913,7 @@ Deno.serve(async (req) => {
                 const placeholderReason: Record<string, any> = {
                   ...reason,
                   status: "PENDING",
+                  staking_contract_version: stakingContractVersion,
                   execution_snapshot: overlayExecSnap,
                   overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
                   overlay_child: {
@@ -1868,6 +1946,8 @@ Deno.serve(async (req) => {
                       exec_best_price: null,
                       exec_best_book: null,
                       recommended_units: null,
+                      recommended_bankroll_pct: null,
+                      staking_contract_version: stakingContractVersion,
                       reason_json: {
                         ...placeholderReason,
                         status: "FAIL",
@@ -1895,6 +1975,8 @@ Deno.serve(async (req) => {
                     exec_best_price: null,
                     exec_best_book: null,
                     recommended_units: null,
+                    recommended_bankroll_pct: null,
+                    staking_contract_version: stakingContractVersion,
                     reason_json: placeholderReason,
                     evaluated_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
@@ -1921,6 +2003,8 @@ Deno.serve(async (req) => {
                     exec_best_price: null,
                     exec_best_book: null,
                     recommended_units: null,
+                    recommended_bankroll_pct: null,
+                    staking_contract_version: stakingContractVersion,
                     reason_json: placeholderReason,
                   });
               } else {
@@ -1960,6 +2044,8 @@ Deno.serve(async (req) => {
                     exec_best_price: null,
                     exec_best_book: null,
                     recommended_units: null,
+                    recommended_bankroll_pct: null,
+                    staking_contract_version: stakingContractVersion,
                     reason_json: {
                       ...reason,
                       execution_snapshot: overlayExecSnap,
@@ -2017,6 +2103,10 @@ Deno.serve(async (req) => {
                     overlayReason.recommended_units = 0.4;
                   }
 
+                  overlayReason.recommended_bankroll_pct =
+                    overlayStatus === "READY" ? 0.004 : null;
+                  overlayReason.staking_contract_version = stakingContractVersion;
+
                   // Upsert overlay row using the same conflict key pattern (system_code,game_id,execution_snapshot,leg_type,side)
                   await supabase.from("pers_sys_signals_v2").upsert(
                     {
@@ -2036,6 +2126,8 @@ Deno.serve(async (req) => {
                       exec_best_price: overlayExecBestPrice,
                       exec_best_book: overlayExecBestBook,
                       recommended_units: overlayStatus === "READY" ? 0.4 : null,
+                      recommended_bankroll_pct: overlayStatus === "READY" ? 0.004 : null,
+                      staking_contract_version: stakingContractVersion,
                       reason_json: overlayReason,
                       evaluated_at: new Date().toISOString(),
                       updated_at: new Date().toISOString(),
@@ -2062,6 +2154,8 @@ Deno.serve(async (req) => {
                     exec_best_price: overlayExecBestPrice,
                     exec_best_book: overlayExecBestBook,
                     recommended_units: overlayStatus === "READY" ? 0.4 : null,
+                    recommended_bankroll_pct: overlayStatus === "READY" ? 0.004 : null,
+                    staking_contract_version: stakingContractVersion,
                     reason_json: overlayReason,
                   });
                 }
@@ -2093,4 +2187,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-

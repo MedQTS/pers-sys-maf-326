@@ -21,6 +21,7 @@ type SignalRow = {
   exec_best_price: number | null;
   exec_best_book: string | null;
   recommended_units: number | null;
+  recommended_bankroll_pct: number | null;
   reason_json: unknown;
   created_at: string;
 };
@@ -330,7 +331,7 @@ Deno.serve(async (req) => {
 
     const { data: signalsData, error: signalsErr } = await supabase
       .from("pers_sys_signals_v2")
-      .select("id,game_id,system_code,model_snapshot,execution_snapshot,signal_status,pass,leg_type,side,line_at_bet,ref_price,exec_best_price,exec_best_book,recommended_units,reason_json,created_at")
+      .select("id,game_id,system_code,model_snapshot,execution_snapshot,signal_status,pass,leg_type,side,line_at_bet,ref_price,exec_best_price,exec_best_book,recommended_units,recommended_bankroll_pct,reason_json,created_at")
       .eq("game_id", gameId)
       .eq("execution_snapshot", snapshotType)
       .eq("signal_status", "READY")
@@ -416,6 +417,10 @@ Deno.serve(async (req) => {
           ? (signal.recommended_units ?? Number(safeJson(signal.reason_json)?.["recommended_units"] ?? null))
           : null;
 
+      const previewPct =
+        signal.recommended_bankroll_pct ??
+        Number(safeJson(signal.reason_json)?.["recommended_bankroll_pct"] ?? null);
+
       const { data: previewData, error: previewErr } = await supabase.rpc("preview_leg_stake", {
         p_game_id: signal.game_id,
         p_system_code: signal.system_code,
@@ -426,6 +431,7 @@ Deno.serve(async (req) => {
         p_exec_best_book: signal.exec_best_book ?? null,
         p_ref_price: signal.ref_price ?? null,
         p_units: Number.isFinite(Number(previewUnits)) ? Number(previewUnits) : null,
+        p_recommended_bankroll_pct: Number.isFinite(Number(previewPct)) ? Number(previewPct) : null,
         p_snapshot_type: signal.execution_snapshot ?? signal.model_snapshot ?? null,
       });
 

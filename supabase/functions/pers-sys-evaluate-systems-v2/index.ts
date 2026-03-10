@@ -142,6 +142,39 @@ function relCLV(openPrice: number, closePrice: number) {
   return (closePrice - openPrice) / openPrice;
 }
 
+function readCfgNum(obj: any, keys: string[], fallback: number | null = null): number | null {
+  for (const key of keys) {
+    const raw = obj?.[key];
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
+function assertSys8Config(sys: SystemV2Row) {
+  const stakingCfg = sys.staking_config ?? {};
+  const ampCfg = sys.amplifier_config ?? {};
+
+  const required: Array<[string, number | null]> = [
+    ["stake_base_pct", readCfgNum(stakingCfg, ["stake_base_pct", "base_pct_bankroll", "base_bankroll_pct"], null)],
+    ["max_pct_bankroll", readCfgNum(stakingCfg, ["max_pct_bankroll"], null)],
+    ["totals_move_min", readCfgNum(stakingCfg, ["totals_move_min"], null)],
+    ["model_total_min", readCfgNum(stakingCfg, ["model_total_min"], null)],
+    ["model_total_max_exclusive", readCfgNum(stakingCfg, ["model_total_max_exclusive"], null)],
+    ["early_agreement_move_min", readCfgNum(stakingCfg, ["early_agreement_move_min"], null)],
+    ["strong_momentum_move_min", readCfgNum(stakingCfg, ["strong_momentum_move_min"], null)],
+    ["day_game_boost_pct", readCfgNum(ampCfg, ["day_game_boost_pct", "day_game_boost"], null)],
+    ["marvel_boost_pct", readCfgNum(ampCfg, ["marvel_boost_pct", "marvel_boost"], null)],
+    ["early_agreement_boost_pct", readCfgNum(ampCfg, ["early_agreement_boost_pct", "early_agreement_boost"], null)],
+    ["strong_momentum_boost_pct", readCfgNum(ampCfg, ["strong_momentum_boost_pct", "strong_momentum_boost"], null)],
+  ];
+
+  const missing = required.filter(([, v]) => v === null).map(([k]) => k);
+  if (missing.length > 0) {
+    throw new Error(`SYS_8 config missing required keys: ${missing.join(', ')}`);
+  }
+}
+
 function pickSnap(snaps: SnapshotRow[], snapshot_type: string, market_type: MarketType): SnapshotRow | null {
   return snaps.find((s) => s.snapshot_type === snapshot_type && s.market_type === market_type) ?? null;
 }
@@ -621,6 +654,10 @@ Deno.serve(async (req) => {
     for (const sysRaw of systemsSorted as any[]) {
       const sys = sysRaw as SystemV2Row;
       const system_code = String(sys.system_code);
+
+      if (system_code === "SYS_8") {
+        assertSys8Config(sys);
+      }
 
       const modelSnap = String(sys.model_snapshot ?? "T10");
       const execSnap = String(sys.execution_snapshot ?? "T30");
@@ -1542,46 +1579,56 @@ Deno.serve(async (req) => {
               reason.open_total = openTotal;
               reason.model_total = modelTotal;
 
-              if (totalsMove < 3) {
+              const totalsMoveMin = readCfgNum(sys.staking_config ?? {}, ["totals_move_min"], 3)!;
+              const modelTotalMin = readCfgNum(sys.staking_config ?? {}, ["model_total_min"], 165)!;
+              const modelTotalMaxExclusive = readCfgNum(sys.staking_config ?? {}, ["model_total_max_exclusive"], 175)!;
+              const earlyAgreementMoveMin = readCfgNum(sys.staking_config ?? {}, ["early_agreement_move_min"], 1.5)!;
+              const strongMomentumMoveMin = readCfgNum(sys.staking_config ?? {}, ["strong_momentum_move_min"], 4.5)!;
+
+              if (totalsMove < totalsMoveMin) {
                 modelPass = false;
                 reason.fail = "totals_move_lt_3";
-              } else if (modelTotal < 165 || modelTotal >= 175) {
+              } else if (modelTotal < modelTotalMin || modelTotal >= modelTotalMaxExclusive) {
                 modelPass = false;
                 reason.fail = "totals_band";
               }
 
               if (modelPass) {
-                let stake = 1.0;
+                let stake = readCfgNum(sys.staking_config ?? {}, ["stake_base_pct", "base_pct_bankroll", "base_bankroll_pct"], 1.0)!;
                 reason.amplifiers = [];
 
                 const ampCfg = sys.amplifier_config ?? {};
 
                 // Day game boost
                 const kickoffHour = new Date(g.start_time_aet).getHours();
-                if (kickoffHour < 18 && ampCfg.day_game_boost) {
-                  stake += Number(ampCfg.day_game_boost);
+                const dayGameBoost = readCfgNum(ampCfg, ["day_game_boost_pct", "day_game_boost"], 0)!;
+                if (kickoffHour < 18 && dayGameBoost > 0) {
+                  stake += dayGameBoost;
                   reason.amplifiers.push("day_game");
                 }
 
                 // Marvel boost
-                if (g.venue && g.venue.toLowerCase().includes("marvel") && ampCfg.marvel_boost) {
-                  stake += Number(ampCfg.marvel_boost);
+                const marvelBoost = readCfgNum(ampCfg, ["marvel_boost_pct", "marvel_boost"], 0)!;
+                if (g.venue && g.venue.toLowerCase().includes("marvel") && marvelBoost > 0) {
+                  stake += marvelBoost;
                   reason.amplifiers.push("marvel");
                 }
 
                 // Early agreement boost
-                if (execTotals && execTotals.total_line !== null && openTotal !== null && ampCfg.early_agreement_boost) {
+                const earlyAgreementBoost = readCfgNum(ampCfg, ["early_agreement_boost_pct", "early_agreement_boost"], 0)!;
+                if (execTotals && execTotals.total_line !== null && openTotal !== null && earlyAgreementBoost > 0) {
                   const earlyMove = execTotals.total_line - openTotal;
                   reason.early_move = earlyMove;
-                  if (earlyMove >= 1.5) {
-                    stake += Number(ampCfg.early_agreement_boost);
+                  if (earlyMove >= earlyAgreementMoveMin) {
+                    stake += earlyAgreementBoost;
                     reason.amplifiers.push("early_agreement");
                   }
                 }
 
                 // Strong momentum boost
-                if (totalsMove >= 4.5 && ampCfg.strong_momentum_boost) {
-                  stake += Number(ampCfg.strong_momentum_boost);
+                const strongMomentumBoost = readCfgNum(ampCfg, ["strong_momentum_boost_pct", "strong_momentum_boost"], 0)!;
+                if (totalsMove >= strongMomentumMoveMin && strongMomentumBoost > 0) {
+                  stake += strongMomentumBoost;
                   reason.amplifiers.push("strong_momentum");
                 }
 

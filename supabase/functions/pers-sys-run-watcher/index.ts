@@ -111,32 +111,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Stable dedupe identity: do not include mutable status fields.
     const dedupeKey = [
       watchType,
       gameId ?? "GLOBAL",
       scheduledStartIso ?? "NO_START",
-      windowStatus ?? "UNSPECIFIED",
     ].join(":");
-
-    // check for existing run
-    const { data: existing } = await supabase
-      .from("pers_sys_watcher_runs")
-      .select("id")
-      .eq("dedupe_key", dedupeKey)
-      .maybeSingle();
-
-    if (existing) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          skipped: true,
-          reason: "duplicate_run",
-          dedupe_key: dedupeKey,
-          window_status: windowStatus,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Determine initial run_status based on window_status
     let initialRunStatus = "STARTED";
@@ -163,7 +143,25 @@ Deno.serve(async (req) => {
       .select()
       .single();
 
-    if (runErr) throw runErr;
+    if (runErr) {
+      const code = (runErr as { code?: string }).code ?? "";
+
+      if (code === "23505") {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            skipped: true,
+            reason: "duplicate_run",
+            dedupe_key: dedupeKey,
+            window_status: windowStatus,
+            window_note: windowNote,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      throw runErr;
+    }
 
     const runId = runRow.id;
 

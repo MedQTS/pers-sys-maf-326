@@ -20,6 +20,7 @@ type SignalV2Row = {
   exec_best_price: number | null;
   exec_best_book: string | null;
   recommended_units: number | null;
+  recommended_bankroll_pct: number | null;
   reason_json: any;
   created_at: string;
 };
@@ -178,7 +179,7 @@ export default function WeekView_v2() {
 
       const { data: sigs, error: sigErr } = await supabase
         .from("pers_sys_signals_v2")
-        .select(`id, game_id, system_code, model_snapshot, execution_snapshot, model_market, execution_market, pass, signal_status, leg_type, side, line_at_bet, ref_price, exec_best_price, exec_best_book, recommended_units, reason_json, created_at`)
+        .select(`id, game_id, system_code, model_snapshot, execution_snapshot, model_market, execution_market, pass, signal_status, leg_type, side, line_at_bet, ref_price, exec_best_price, exec_best_book, recommended_units, recommended_bankroll_pct, reason_json, created_at`)
         .in("game_id", gameIds);
 
       if (sigErr) throw sigErr;
@@ -203,6 +204,9 @@ export default function WeekView_v2() {
                 p_exec_best_book: s.exec_best_book ?? null,
                 p_ref_price: s.ref_price ?? null,
                 p_units: s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null,
+                p_recommended_bankroll_pct: Number.isFinite(Number(s.recommended_bankroll_pct ?? r?.recommended_bankroll_pct ?? null))
+                  ? Number(s.recommended_bankroll_pct ?? r?.recommended_bankroll_pct)
+                  : null,
                 p_snapshot_type: s.execution_snapshot ?? s.model_snapshot ?? null,
               };
               const { data } = await supabase.rpc("preview_leg_stake", payload);
@@ -466,6 +470,9 @@ function GameCard(props: {
               const f = formatLegFromRow(s);
               const r = safeJson(s.reason_json) || {};
               const unitsOverride = s.system_code === "SYS_7" ? (s.recommended_units ?? r?.recommended_units ?? null) : null;
+              const pctOverride = Number.isFinite(Number(s.recommended_bankroll_pct ?? r?.recommended_bankroll_pct ?? null))
+                ? Number(s.recommended_bankroll_pct ?? r?.recommended_bankroll_pct)
+                : null;
               const preview = stakePreviewBySignal[s.id];
 
               return (
@@ -502,6 +509,7 @@ function GameCard(props: {
                           p_exec_best_book: s.exec_best_book ?? null,
                           p_ref_price: s.ref_price ?? null,
                           p_units: unitsOverride,
+                          p_recommended_bankroll_pct: pctOverride,
                           p_snapshot_type: s.execution_snapshot ?? s.model_snapshot ?? null,
                         };
                         const { data, error } = await supabase.rpc("accept_leg_create_bet", payload);

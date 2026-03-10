@@ -579,11 +579,13 @@ export type Database = {
           model_market: Database["public"]["Enums"]["sys_market"]
           model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
           reason_json: Json
+          recommended_bankroll_pct: number | null
           recommended_units: number | null
           ref_price: number | null
           round: number | null
           season: number
           side: Database["public"]["Enums"]["sys_side"] | null
+          staking_contract_version: string
           system_code: string
           updated_at: string
         }
@@ -605,11 +607,13 @@ export type Database = {
           model_market: Database["public"]["Enums"]["sys_market"]
           model_snapshot: Database["public"]["Enums"]["sys_snapshot"]
           reason_json?: Json
+          recommended_bankroll_pct?: number | null
           recommended_units?: number | null
           ref_price?: number | null
           round?: number | null
           season: number
           side?: Database["public"]["Enums"]["sys_side"] | null
+          staking_contract_version?: string
           system_code: string
           updated_at?: string
         }
@@ -631,11 +635,13 @@ export type Database = {
           model_market?: Database["public"]["Enums"]["sys_market"]
           model_snapshot?: Database["public"]["Enums"]["sys_snapshot"]
           reason_json?: Json
+          recommended_bankroll_pct?: number | null
           recommended_units?: number | null
           ref_price?: number | null
           round?: number | null
           season?: number
           side?: Database["public"]["Enums"]["sys_side"] | null
+          staking_contract_version?: string
           system_code?: string
           updated_at?: string
         }
@@ -703,10 +709,12 @@ export type Database = {
           parent_signal_id: string | null
           pass: boolean
           reason_json: Json
+          recommended_bankroll_pct: number | null
           recommended_units: number | null
           ref_price: number | null
           side: Database["public"]["Enums"]["sys_side"]
           signal_status: Database["public"]["Enums"]["sys_signal_status"]
+          staking_contract_version: string
           system_code: string
           updated_at: string
         }
@@ -726,10 +734,12 @@ export type Database = {
           parent_signal_id?: string | null
           pass?: boolean
           reason_json?: Json
+          recommended_bankroll_pct?: number | null
           recommended_units?: number | null
           ref_price?: number | null
           side: Database["public"]["Enums"]["sys_side"]
           signal_status?: Database["public"]["Enums"]["sys_signal_status"]
+          staking_contract_version?: string
           system_code: string
           updated_at?: string
         }
@@ -749,10 +759,12 @@ export type Database = {
           parent_signal_id?: string | null
           pass?: boolean
           reason_json?: Json
+          recommended_bankroll_pct?: number | null
           recommended_units?: number | null
           ref_price?: number | null
           side?: Database["public"]["Enums"]["sys_side"]
           signal_status?: Database["public"]["Enums"]["sys_signal_status"]
+          staking_contract_version?: string
           system_code?: string
           updated_at?: string
         }
@@ -1214,6 +1226,7 @@ export type Database = {
           p_snapshot_type: string
           p_system_code: string
           p_units: number
+          p_recommended_bankroll_pct?: number
         }
         Returns: Json
       }
@@ -1230,6 +1243,7 @@ export type Database = {
           p_snapshot_type?: string
           p_system_code: string
           p_units?: number
+          p_recommended_bankroll_pct?: number
         }
         Returns: Json
       }

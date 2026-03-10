@@ -225,6 +225,10 @@ function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betP
                             s.system_code === "SYS_7"
                               ? (s?.reason as any)?.recommended_units ?? null
                               : null;
+                          const pctOverride =
+                            Number.isFinite(Number((s?.reason as any)?.recommended_bankroll_pct ?? null))
+                              ? Number((s?.reason as any)?.recommended_bankroll_pct)
+                              : null;
                           const payload = {
                             p_game_id: game.id,
                             p_system_code: s.system_code,
@@ -235,6 +239,7 @@ function GameRow({ game, signals, betPlaced }: { game: any; signals: any[]; betP
                             p_exec_best_book: leg.exec_best_book ?? null,
                             p_ref_price: leg.ref_price ?? null,
                             p_units: unitsOverride,
+                            p_recommended_bankroll_pct: pctOverride,
                             p_snapshot_type: leg.snapshot_type ?? null,
                           };
                           const { data, error } = await supabase.rpc("accept_leg_create_bet", payload);

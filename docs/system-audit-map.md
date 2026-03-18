@@ -50,7 +50,7 @@
 - SYS_5: evaluator block + SYS_5 config update migration.
 - SYS_6: evaluator block + SYS_6 config update migration.
 - SYS_7: evaluator block + SYS_7 config update migration.
-- SYS_8: evaluator block exists; no explicit SYS_8 config seed/update migration found in repo.
+- SYS_8: evaluator block exists; repo now includes explicit seed/update and config-normalization migrations.
 
 ## SHARED LOGIC
 
@@ -70,8 +70,8 @@
 
 ### Staking logic
 - Evaluator computes `reason.recommended_units` per system block (including amplifiers/caps).
-- Alert flow (`pers-sys-send-t30-alert`) calls `preview_leg_stake(...)` RPC to convert units to stake preview.
-- Bet acceptance uses `accept_leg_create_bet(...)` RPC with additional bankroll and match-cap controls.
+- The current repo also includes canonical `recommended_bankroll_pct` support in `preview_leg_stake(...)` and `accept_leg_create_bet(...)`, while keeping `recommended_units` for backward compatibility.
+- Alert flow (`pers-sys-send-t30-alert`) and UI surfaces now read both legacy and canonical staking fields.
 
 ### Orchestration that refreshes signals
 - `pers-sys-dispatch-watchers` classifies T60/T30/T10 timing windows.
@@ -80,18 +80,13 @@
 
 ## HIGH-RISK AREAS
 
-1. **Schema mismatch risk:** evaluator selects `collision_rank` from `pers_sys_system_priority`, but the migration defining this table does not include `collision_rank`.
-2. **Audit-table migration gap:** evaluator writes to `pers_sys_signal_audit_v2`, but no migration in repo creates this table.
-3. **Dual system registries:** both `pers_sys_systems` (legacy) and `pers_sys_systems_v2` (active evaluator) are present; priority table FK points to legacy table.
-4. **SYS_8 config visibility risk:** evaluator has SYS_8 logic, but no explicit migration seed/update for SYS_8 was found.
-5. **Config-vs-code drift risk:** many thresholds are hardcoded in evaluator blocks, while also represented in `staking_config` / `amplifier_config` JSON for some systems.
-6. **Snapshot policy subtlety:** evaluator rewrites `model_snapshot=T10` to rules snapshot `T30` for most systems except SYS_7, which can surprise operators.
+1. **Deployment-state risk:** repo remediations for audit-table coverage, `collision_rank`, v2 registry alignment, and SYS_8 support now exist, but repository inspection cannot prove they are applied in target environments.
+2. **Config-vs-code drift risk:** many thresholds remain hardcoded in evaluator blocks, while also represented in `staking_config` / `amplifier_config` JSON for some systems.
+3. **Snapshot policy subtlety:** evaluator rewrites `model_snapshot=T10` to rules snapshot `T30` for most systems except SYS_7, which can surprise operators.
+4. **Automation/runtime risk:** even where repo-level dedupe/remediation exists, live concurrency and scheduler behavior remain environment-dependent.
 
 ## OPEN QUESTIONS
 
-1. Where is `pers_sys_signal_audit_v2` actually created (if outside repo migrations)?
-2. Was `collision_rank` added manually in production, or is a migration missing?
-3. Should `pers_sys_system_priority` reference `pers_sys_systems_v2` instead of legacy `pers_sys_systems`?
-4. Is SYS_8 intentionally runtime-only/manual-config, or is a seed migration missing?
-5. Which source of truth is canonical for thresholds: evaluator code literals or JSON config columns?
-6. Is `recommended_units` meant to represent bankroll % for some systems and raw units for others, and is that normalized downstream?
+1. Have remediation migrations for audit coverage, `collision_rank`, v2 priority FK, SYS_8 seeding, and canonical staking RPCs been applied in the target Supabase environment?
+2. Which source of truth is intended to dominate long term for thresholds: evaluator code literals or JSON config columns?
+3. Should stale audit docs be treated as historical snapshots rather than current repo-state assertions?

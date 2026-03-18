@@ -1,73 +1,75 @@
 # VERIFIED FINDINGS
 
+## Verification Scope Note
+- This document reflects the current repository state only.
+- It does **not** confirm whether the live Supabase environment has applied the same migrations or schema changes.
+- Where the repo now contains remediation migrations, those items are marked as repo-level remediations and any remaining uncertainty is about deployment/application state, not repository absence.
+
 ## Critical
-- `pers_sys_signal_audit_v2` migration gap blocks evaluator writes.
-  - Status: CONFIRMED DEFECT
+- `pers_sys_signal_audit_v2` repo migration coverage is now present.
+  - Status: REPO-LEVEL REMEDIATION PRESENT
   - Evidence:
     - Evaluator writes audit rows with `supabase.from("pers_sys_signal_audit_v2").upsert(...)`.
-    - Repo migrations contain no `create table ... pers_sys_signal_audit_v2`.
+    - Repo migrations now contain `20260309113200_create_signal_audit_v2.sql`, which creates `public.pers_sys_signal_audit_v2`.
   - Why it matters:
-    - If table is absent in target DB, every evaluation run fails at audit write path, preventing reliable signal generation.
-  - Exact fix:
-    - Add a migration that creates `pers_sys_signal_audit_v2` with all columns used by `upsertAuditV2(...)` and matching unique key `(system_code,game_id,model_snapshot,execution_snapshot,audit_key)`.
+    - The repository blocker is cleared, but evaluator writes still depend on the target environment having applied this migration.
+  - Remaining unknown:
+    - Live database application state is not verified by repository inspection alone.
 
-- `collision_rank` schema mismatch between evaluator query and migrations.
-  - Status: CONFIRMED DEFECT
+- `collision_rank` repo/schema alignment is now present.
+  - Status: REPO-LEVEL REMEDIATION PRESENT
   - Evidence:
     - Evaluator selects `collision_rank` from `pers_sys_system_priority`.
-    - Migration creating `pers_sys_system_priority` does not define `collision_rank`.
-    - No migration in repo adds/alters this column.
+    - Repo migrations now include `20260309113300_add_collision_rank_to_system_priority.sql`, which adds and backfills `collision_rank`.
   - Why it matters:
-    - Selecting a non-existent column causes evaluator query failure, halting system evaluation.
-  - Exact fix:
-    - Add migration `alter table public.pers_sys_system_priority add column collision_rank int;` and seed values; or remove column from evaluator query and logic.
+    - The repository blocker is cleared, but runtime success still depends on migration application in the target environment.
+  - Remaining unknown:
+    - Live database application state is not verified by repository inspection alone.
 
-- Staking semantics mismatch can produce wrong dollar stakes for non-SYS_7 alerts/bets.
-  - Status: CONFIRMED DEFECT
+- Canonical non-SYS_7 staking path is now present in repo code/migrations.
+  - Status: REPO-LEVEL REMEDIATION PRESENT
   - Evidence:
     - Evaluator writes `recommended_units` for all systems.
-    - Alert flow passes units to `preview_leg_stake` only for SYS_7; non-SYS_7 pass `p_units = null`.
-    - `preview_leg_stake` ignores evaluator `recommended_units` for non-SYS_7 and recomputes units from `staking_config.base_bankroll_pct`.
-    - `accept_leg_create_bet` uses same model: explicit units only for SYS_7, computed units for others.
+    - Repo migrations now add canonical staking fields and canonical staking RPC parameters (`p_recommended_bankroll_pct`).
+    - UI and RPC paths in the repo now pass `recommended_bankroll_pct` for non-SYS_7 flows.
   - Why it matters:
-    - Recommended stake amplifiers (e.g., SYS_1/3/5/6/8) may not be reflected in alert stake preview and accepted bet stake.
-  - Exact fix:
-    - Unify semantics: either (a) always treat `recommended_units` as canonical units and pass to preview/accept for all systems, or (b) rename evaluator field to `recommended_pct_bankroll`/`recommended_signal_strength` and stop presenting it as bet sizing.
+    - The repository now has a coherent canonical path, but live correctness still depends on migration deployment and target DB state.
+  - Remaining unknown:
+    - Whether the deployed environment is running the canonical RPC versions cannot be confirmed from repository contents alone.
 
 ## High
-- Dual registry mismatch (`pers_sys_systems` vs `pers_sys_systems_v2`) with priority FK anchored to legacy table.
-  - Status: CONFIRMED DEFECT
+- Legacy-vs-v2 registry alignment is now remediated in repo migrations.
+  - Status: REPO-LEVEL REMEDIATION PRESENT
   - Evidence:
     - Evaluator loads active systems from `pers_sys_systems_v2`.
-    - `pers_sys_system_priority` migration FK references `public.pers_sys_systems(system_code)` (legacy table), not v2.
+    - Repo migrations now include `20260309113400_repoint_system_priority_fk_to_v2.sql`, which repoints the priority FK to `pers_sys_systems_v2(system_code)`.
   - Why it matters:
-    - Priority/collision metadata can drift from evaluator’s true system registry and omit v2-only systems (including SYS_8).
-  - Exact fix:
-    - Migrate priority FK to `pers_sys_systems_v2(system_code)` and reseed/update priorities in v2 namespace.
+    - The repository blocker is cleared, though live DB application remains unverified.
+  - Remaining unknown:
+    - Whether production/staging databases have applied the repoint migration is not knowable from repo inspection.
 
-- SYS_8 has evaluator logic but no v2 seed/update migration in repo.
-  - Status: CONFIRMED DEFECT
+- SYS_8 repo seeding/config support is now present.
+  - Status: REPO-LEVEL REMEDIATION PRESENT
   - Evidence:
     - Evaluator contains explicit SYS_8 rule block.
-    - No migration contains `SYS_8` insert/update into `pers_sys_systems_v2`.
+    - Repo migrations now include `20260309113500_add_sys8_totals_to_systems_v2.sql` and `20260309113600_normalize_systems_v2_config_keys.sql`.
   - Why it matters:
-    - SYS_8 may never run if not manually inserted in DB; environment drift risk is high.
-  - Exact fix:
-    - Add deterministic migration inserting/updating SYS_8 row in `pers_sys_systems_v2` and (if needed) `pers_sys_system_priority`.
+    - The repository blocker is cleared, but live migration application remains unknown.
+  - Remaining unknown:
+    - Deployed environment support for SYS_8 is not confirmed by repository evidence alone.
 
 - Watcher automation has race window before unique-index enforcement handling.
-  - Status: CONFIRMED DEFECT
+  - Status: REPO REVIEW NEEDED FOR CURRENT RUNTIME POSTURE
   - Evidence:
-    - `pers-sys-run-watcher` performs pre-check for dedupe key then inserts run row.
-    - Unique index exists on `pers_sys_watcher_runs(dedupe_key)`.
-    - Insert path does not catch `23505` and convert to clean duplicate response.
+    - Current repo code catches `23505` in `pers-sys-run-watcher` and returns a duplicate-skip response.
+    - Daily batch runners still perform read-then-insert dedupe checks before insert.
   - Why it matters:
-    - Concurrent invocations can produce transient failures (500) instead of idempotent skip behavior.
-  - Exact fix:
-    - Wrap insert with conflict-safe pattern (`upsert ... on conflict do nothing returning id`) or catch `23505` and return duplicate-skip payload.
+    - Idempotency handling is improved in watcher execution, but operational certainty still depends on actual deployed code and how batch entry points are triggered.
+  - Remaining unknown:
+    - Concurrent runtime behavior in the live environment is not verifiable from repo contents alone.
 
 - Config-vs-code drift across systems is real and material.
-  - Status: CONFIRMED DEFECT
+  - Status: STILL A LIVE REPO RISK
   - Evidence:
     - Rules/thresholds are hardcoded per SYS block in evaluator.
     - Parallel values also exist in `pers_sys_systems_v2` JSON config (`staking_config`, `amplifier_config`, `overlay_config`) and legacy `pers_sys_systems.params`.
@@ -150,48 +152,49 @@
 - Automation-safe: SAFE WITH FIXES
 
 ## SYS_8
-- Match status: UNVERIFIABLE / INCOMPLETE
+- Match status: REPO SUPPORT PRESENT / LIVE APPLICATION UNVERIFIED
 - Evidence:
   - Evaluator has SYS_8 totals-over block with thresholds and amplifiers.
-  - No migration seeds/updates SYS_8 in `pers_sys_systems_v2`.
+  - Repo migrations now seed/update SYS_8 in `pers_sys_systems_v2` and normalize canonical config keys.
 - Deviations:
-  - Registry/config parity missing in repo migrations.
+  - Repo support exists, but deployed environment state is still unknown.
 - Automation-safe: NO
 
 # STAKING / UNIT SEMANTICS
 - Findings:
-  - `recommended_units` is not consistently treated as canonical units across systems.
-  - SYS_7: treated as raw units in alert preview and bet-accept RPC path.
-  - Non-SYS_7: alert/accept recompute units from `staking_config.base_bankroll_pct`, ignoring evaluator `recommended_units`.
+  - Repo code now includes canonical `recommended_bankroll_pct` support in preview/accept paths.
+  - `recommended_units` remains present for backward compatibility and transitional flows.
+  - Live-environment adoption of the canonical path remains unverified by repo inspection alone.
 - Evidence:
   - Evaluator writes `recommended_units` for all systems.
-  - Alert function only passes units to preview for SYS_7.
-  - `preview_leg_stake` and `accept_leg_create_bet` branch on `p_system_code = 'SYS_7'` for direct units.
+  - Repo migrations add `recommended_bankroll_pct` and canonical staking RPC parameters.
+  - Current repo UI passes `p_recommended_bankroll_pct` into preview and accept RPCs.
 - Risk:
-  - Dollar stakes in alerts and created bets can diverge from evaluator recommendation (silent sizing drift).
-- Fix:
-  - Define one invariant contract: `recommended_units` always raw units (preferred) and pass it for all systems; otherwise rename field and remove sizing implications from alerts.
+  - If target environments have not applied canonical staking migrations/RPCs, deployed behavior may still differ from current repo behavior.
+ - Repo conclusion:
+  - Repository semantics are materially more coherent than earlier audit notes suggested.
 
 # WATCHER / CRON SAFETY
 - Findings:
   - Dedupe is present (`dedupe_key` + unique index + duplicate skip responses).
   - Missed/too-early windows skip downstream unless `force_run` is true.
   - T30 alert logic excludes already logged bets, differentiates NEW/CHANGED/PREVIOUSLY_SENT by fingerprint+change hash, and blocks duplicate run via alert hash unique index.
-  - Race windows remain in watcher run insert path (pre-check then insert without `23505` handler).
+  - The current watcher code catches `23505`; remaining idempotency concern is mainly about full-system runtime confidence rather than complete repo absence of duplicate handling.
 - Evidence:
   - `pers-sys-run-watcher` dedupe/read/insert and missed-window logic.
   - `pers_sys_watcher_runs` unique index on `dedupe_key`.
   - `pers-sys-send-t30-alert` logged-bet filter, status labeling, `actionRows` gating, and alert-run unique hash behavior.
   - `pers_sys_email_alert_runs` and `pers_sys_email_alert_items` unique indexes.
 - Risk:
-  - Concurrent invocations can throw failures instead of idempotent no-op.
-  - If staking semantics are unresolved, alerts can be operationally misleading despite dedupe safety.
-- Fix:
-  - Make watcher insert conflict-safe and idempotent on `23505`.
-  - Resolve staking-unit contract before enabling cron dispatch.
-- Safe to enable automation now: NO
+  - Concurrent and deployment-specific behavior is still not fully knowable from repository contents alone.
+  - Stale docs must not be mistaken for proof that current repo code is still missing remediations.
+- Safe to enable automation now:
+  - REPO STATE: materially improved after remediation migrations.
+  - LIVE ENVIRONMENT: still unverified.
 
 # OPEN BLOCKERS
-- Missing/unknown migration for `pers_sys_signal_audit_v2` in repo.
-- `collision_rank` evaluator dependency not represented in repo migrations.
-- Staking contract mismatch (`recommended_units` meaning) unresolved for non-SYS_7.
+- Repository blockers formerly listed here are now remediated in repo migrations/code.
+- Remaining blockers are outside repo-only verification scope:
+  - whether target environments have applied the remediation migrations
+  - whether deployed RPC/function versions match the repository
+  - whether runtime automation behavior in production matches current repo code

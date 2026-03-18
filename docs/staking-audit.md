@@ -1,5 +1,9 @@
 # STAKING AUDIT
 
+## Scope Note
+- This document now distinguishes between current repository behavior and unverified live-environment behavior.
+- Repository inspection shows that canonical staking support has been added, but repo-only review cannot prove that deployed RPCs and migrations match the current repository.
+
 ## Current Semantics by System
 ### SYS_1
 - Evaluator output meaning:
@@ -8,7 +12,7 @@
 - Evidence:
   - `reason.recommended_units = stake` after additive boosts/cap. See evaluator SYS_1 block.
 - Correct or incorrect:
-  - Incorrect/ambiguous in current pipeline: downstream preview/accept do not consume this for SYS_1 and recompute stake from config `base_bankroll_pct`.
+  - Legacy interpretation only. Current repo preview/accept paths can now consume canonical `recommended_bankroll_pct`, but live deployment state is unverified.
 
 ### SYS_2
 - Evaluator output meaning:
@@ -18,7 +22,7 @@
 - Evidence:
   - Primary assignment and overlay assignment in evaluator.
 - Correct or incorrect:
-  - Incorrect/ambiguous: non-SYS_7 preview/accept ignore this value for stake computation.
+  - Legacy interpretation only. Current repo supports canonical bankroll-percent flow in preview/accept.
 
 ### SYS_3
 - Evaluator output meaning:
@@ -27,7 +31,7 @@
 - Evidence:
   - SYS_3 `let stakeUnits = 1.0; ... reason.recommended_units = stakeUnits;`.
 - Correct or incorrect:
-  - Incorrect in pipeline: preview/accept only pass explicit units for SYS_7, so SYS_3’s unit-like output is ignored and replaced by config-derived units.
+  - Transitional. Current repo gives preview/accept a canonical bankroll-percent path, but legacy compatibility remains in storage and code paths.
 
 ### SYS_4
 - Evaluator output meaning:
@@ -35,7 +39,7 @@
 - Evidence:
   - SYS_4 block builds leg only; no sizing assignment.
 - Correct or incorrect:
-  - Ambiguous/incomplete: stake is entirely determined downstream by config fallback (`base_bankroll_pct`, default 1%) regardless of SYS_4 strategy narrative.
+  - Transitional. Current repo can normalize through canonical bankroll-percent semantics, but evaluator/storage still preserve legacy fields.
 
 ### SYS_5
 - Evaluator output meaning:
@@ -44,7 +48,7 @@
 - Evidence:
   - SYS_5 comments and assignment `reason.recommended_units = stakePct`.
 - Correct or incorrect:
-  - Incorrect in pipeline: non-SYS_7 preview/accept ignore `recommended_units`; effective stake comes from `base_bankroll_pct` conversion.
+  - Legacy interpretation only. Current repo supports canonical bankroll-percent input in preview/accept.
 
 ### SYS_6
 - Evaluator output meaning:
@@ -53,7 +57,7 @@
 - Evidence:
   - SYS_6 `let stakePct = 1.5; ... reason.recommended_units = stakePct;`.
 - Correct or incorrect:
-  - Incorrect in pipeline for same reason: ignored by preview/accept unless SYS_7.
+  - Legacy interpretation only. Current repo supports canonical bankroll-percent input in preview/accept.
 
 ### SYS_7
 - Evaluator output meaning:
@@ -61,7 +65,7 @@
 - Evidence:
   - SYS_7 `let units`, tiering, and `reason.recommended_units = units`.
 - Correct or incorrect:
-  - Correct relative to current preview/accept implementation: SYS_7 is the only system where `p_units` override is passed and consumed.
+  - Still supported. SYS_7 retains explicit-unit handling, while the repo also supports canonical bankroll-percent paths.
 
 ### SYS_8
 - Evaluator output meaning:
@@ -70,42 +74,37 @@
 - Evidence:
   - SYS_8 assignment `reason.recommended_units = stake` and cap logic.
 - Correct or incorrect:
-  - Incorrect/ambiguous in pipeline: non-SYS_7 override path means this value is not used for actual stake computation.
+  - Legacy interpretation only. Repo migrations now seed SYS_8 and add canonical config-key normalization plus canonical staking support.
 
 ## End-to-End Stake Flow
 - Evaluator:
-  - Writes `recommended_units` into `reason_json`, audit rows, and `pers_sys_signals_v2.recommended_units`.
+  - Still writes `recommended_units`.
+  - Repo schema also now supports `recommended_bankroll_pct` and `staking_contract_version`.
 - Preview:
-  - `preview_leg_stake(...)` computes bankroll snapshot, one-unit percent (`global_1u_pct`, and `system_7_1u_pct` for SYS_7), then:
-    - SYS_7: uses provided `p_units`.
-    - non-SYS_7: ignores `p_units` and computes units from `staking_config.base_bankroll_pct / one_u_pct`.
+  - Current repo `preview_leg_stake(...)` prefers canonical `p_recommended_bankroll_pct`, supports backward-compatible `p_units`, and only then falls back to config-derived sizing.
 - Acceptance:
-  - `accept_leg_create_bet(...)` mirrors preview semantics:
-    - SYS_7 uses provided `p_units`.
-    - non-SYS_7 computes units from `base_bankroll_pct / one_u_pct`.
+  - Current repo `accept_leg_create_bet(...)` mirrors the same canonical-first behavior.
   - Computes `stake_amount = bankroll * units * one_u_pct` and rounds to nearest $5.
   - Applies match cap at `6%` bankroll (hardcoded).
 - Storage:
   - `pers_sys_signals_v2` stores evaluator `recommended_units`.
-  - `pers_sys_bets` stores accepted `units` and `stake_amount` (which can diverge from evaluator recommendation for non-SYS_7).
+  - Repo schema now also supports canonical staking fields for signals/audit rows.
 - Alert rendering:
-  - `pers-sys-send-t30-alert` calls `preview_leg_stake` and displays preview `stake_amount`.
-  - It only passes `p_units` for SYS_7; all other systems use preview fallback computation.
+  - `pers-sys-send-t30-alert` still reads legacy fields, but the current repo also carries canonical staking fields through the stack.
 
 ## Verified Defects
 ### Critical
 - Issue:
-  - `recommended_units` semantic contract is broken for non-SYS_7 systems (SYS_1,2,3,4,5,6,8).
+  - Historical non-SYS_7 staking ambiguity has been remediated in current repo code/migrations, but live deployment state remains unknown.
   - Evidence:
-    - Evaluator assigns `recommended_units` across systems.
-    - Alert and UI pass `p_units` only when `system_code === "SYS_7"`.
-    - `preview_leg_stake` and `accept_leg_create_bet` only consume explicit units for SYS_7; others derive from `base_bankroll_pct`.
+    - Canonical staking fields and canonical RPC parameters now exist in repo migrations.
+    - Current UI passes `p_recommended_bankroll_pct` into preview and accept RPCs.
   - Why it matters:
-    - Dollar stakes shown in alerts/previews and dollar stakes on accepted bets can ignore evaluator stake logic/amplifiers.
+    - Repository semantics now appear materially more coherent, but deployed behavior still depends on whether target environments have applied the newer RPC migrations.
   - Systems affected:
-    - SYS_1, SYS_2, SYS_3, SYS_4, SYS_5, SYS_6, SYS_8.
-  - Exact fix:
-    - Introduce canonical stake input for all systems (e.g., `recommended_bankroll_pct` or `recommended_units`) and pass it through preview+accept uniformly.
+    - Environment verification required for all systems.
+  - Repo conclusion:
+    - Repo-level blocker appears remediated.
 
 - Issue:
   - Portfolio cap and contract mismatch versus stated policy.
@@ -124,36 +123,32 @@
 
 ### High
 - Issue:
-  - Preview and acceptance are only partially aligned with strategy semantics.
+  - Preview and acceptance now share a canonical-first staking path in repo code, but runtime deployment parity is unverified.
   - Evidence:
-    - Preview and acceptance use similar formulas, but both ignore evaluator sizing for non-SYS_7.
-    - Acceptance adds match-cap rejection path not represented as a hard pre-filter in preview output.
+    - Current repo migrations redefine both RPCs with the same canonical staking contract.
   - Why it matters:
-    - Operators can trust a preview stake that does not reflect evaluator-intended sizing and can still fail at accept time due cap checks.
+    - Documentation must not continue describing the old repo state as if it were current.
   - Systems affected:
-    - Preview/accept UX across all systems; sizing semantics issue hits non-SYS_7.
-  - Exact fix:
-    - Use one shared normalization function (SQL or edge) for both preview and accept with identical inputs and cap checks; include cap status in preview response.
+    - All environments pending deployment verification.
 
 - Issue:
-  - Config key mismatch risk can silently fall back to default 1% for non-SYS_7.
+  - Config-key drift remains a transition risk, though repo migrations now normalize key names.
   - Evidence:
-    - Preview/accept read `staking_config.base_bankroll_pct`.
-    - Several migrations configure systems with keys such as `base_pct_bankroll`, `line_pct_bankroll`, or `base_units`.
+    - Repo contains normalization migrations for `base_bankroll_pct` and SYS_8 canonical keys.
   - Why it matters:
-    - Missing expected key causes fallback to default 1%, producing deterministic but incorrect stakes.
+    - The repo has mitigations, but target environments may still lag if migrations are unapplied.
   - Systems affected:
-    - non-SYS_7 systems lacking `base_bankroll_pct` key.
-  - Exact fix:
-    - Standardize staking schema keys and add migration validation/check constraints (or runtime strict validation) to reject incomplete config.
+    - Environment-dependent.
 
 ## Preview vs Acceptance Consistency
-- Same stake path: NO
+- Same stake path:
+  - REPO STATE: substantially aligned through canonical-first RPCs.
+  - LIVE ENVIRONMENT: unverified.
 - Evidence:
-  - Both use similar normalization math and SYS_7-only explicit units, but acceptance applies match-cap gating and duplicate guards that preview does not fully emulate.
+  - Current repo defines both RPCs with canonical bankroll-percent support.
 - Divergence points:
   - Match cap enforced only in accept path.
-  - Preview can present stake for a candidate that will be rejected on acceptance (`reason: match_cap`).
+  - Preview can still present stake for a candidate that will be rejected on acceptance (`reason: match_cap`).
 - Risk:
   - Operational confusion and false confidence in actionable alert dollar amounts.
 
@@ -170,6 +165,7 @@
   - Enforce 4% match cap + 3% per-bet cap in shared normalization layer.
 
 ## Safe to trust current dollar stakes
-- Alerts: NO
-- Bet creation: NO
-- Stored bets: NO
+- Repo state:
+  - more coherent than the earlier blocker audit claimed
+- Live environment:
+  - still unverified

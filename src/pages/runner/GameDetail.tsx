@@ -93,42 +93,6 @@ export default function GameDetail() {
           </div>
         )}
 
-        {/* Team State */}
-        {teamStates.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-              Entering-Match State
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {teamStates.map((ts) => (
-                <div key={ts.id} className="runner-card">
-                  <h3 className="font-medium text-sm mb-2">{(ts.team as any)?.canonical_name}</h3>
-                  <div className="grid grid-cols-4 gap-2 text-xs font-mono">
-                    <div>
-                      <span className="text-muted-foreground block">W-L-D</span>
-                      {ts.wins}-{ts.losses}-{ts.draws}
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">%</span>
-                      {Number(ts.percentage).toFixed(1)}
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">Streak</span>
-                      <span className={ts.streak > 0 ? "text-win" : ts.streak < 0 ? "text-loss" : ""}>
-                        {ts.streak > 0 ? `W${ts.streak}` : ts.streak < 0 ? `L${Math.abs(ts.streak)}` : "–"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">PF/PA</span>
-                      {ts.points_for}/{ts.points_against}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Market Snapshots */}
         {snapshots.length > 0 && (
           <div className="space-y-2">

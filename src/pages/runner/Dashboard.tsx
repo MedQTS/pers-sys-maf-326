@@ -51,6 +51,9 @@ function StepCard({
   const statusAuthoritative = truth?.status_authoritative === true;
   const scheduleAuthoritative = truth?.schedule_authoritative === true;
 
+  const badgeVariant =
+    statusAuthoritative && status.toUpperCase() === "SUCCESS" ? "default" : "secondary";
+
   return (
     <div className="space-y-2">
       <RunButton label={label} functionName={functionName} body={body} variant={variant} />
@@ -63,15 +66,15 @@ function StepCard({
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
           <span className="text-muted-foreground">Last run: {fmtTs(effectiveLastRun)}</span>
           <Badge
-            variant="secondary"
+            variant={badgeVariant}
             className="text-[9px] px-1.5 py-0"
           >
             {status}
           </Badge>
-          <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+          <Badge variant={statusAuthoritative ? "default" : "secondary"} className="text-[9px] px-1.5 py-0">
             {statusAuthoritative ? "authoritative" : "non-authoritative"}
           </Badge>
-          <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+          <Badge variant={scheduleAuthoritative ? "default" : "secondary"} className="text-[9px] px-1.5 py-0">
             {scheduleAuthoritative ? "schedule: authoritative" : "schedule: advisory"}
           </Badge>
         </div>
@@ -176,9 +179,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Run pipeline</div>
-              <div className="text-sm font-mono">
-                {truthByStep.pull_squiggle?.schedule_text ?? "Operational schedule unavailable from backend truth source."}
-              </div>
+              <div className="text-sm font-mono">{truthByStep.pull_squiggle?.schedule_text ?? "Schedule from backend truth source"}</div>
               <div className="text-[11px] text-muted-foreground mt-1">
                 Source: backend operational truth RPC
               </div>

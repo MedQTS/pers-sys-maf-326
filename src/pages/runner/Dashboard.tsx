@@ -181,7 +181,7 @@ export default function Dashboard() {
               <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Run pipeline</div>
               <div className="text-sm font-mono">{truthByStep.pull_squiggle?.schedule_text ?? "Schedule from backend truth source"}</div>
               <div className="text-[11px] text-muted-foreground mt-1">
-                Runs: Pull Squiggle → Build Features → Pull OPEN Snapshot → Evaluate Systems
+                Source: backend operational truth RPC
               </div>
             </div>
             <Button onClick={runWeeklyPipeline} disabled={runningWeekly} className="font-mono text-xs">

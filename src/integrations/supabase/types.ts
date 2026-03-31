@@ -831,6 +831,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "pers_sys_system_priority_system_code_fk"
+            columns: ["system_code"]
+            isOneToOne: true
+            referencedRelation: "pers_sys_systems_v2"
+            referencedColumns: ["system_code"]
+          },
+          {
             foreignKeyName: "pers_sys_system_priority_system_code_fkey"
             columns: ["system_code"]
             isOneToOne: true
@@ -1214,39 +1221,71 @@ export type Database = {
     Functions: {
       _round_to_5: { Args: { p_value: number }; Returns: number }
       _round_to_quarter: { Args: { p_value: number }; Returns: number }
-      accept_leg_create_bet: {
-        Args: {
-          p_exec_best_book: string
-          p_exec_best_price: number
-          p_game_id: string
-          p_leg_type: string
-          p_line_at_bet: number
-          p_ref_price: number
-          p_side: string
-          p_snapshot_type: string
-          p_system_code: string
-          p_units: number
-          p_recommended_bankroll_pct?: number
-        }
-        Returns: Json
-      }
+      accept_leg_create_bet:
+        | {
+            Args: {
+              p_exec_best_book: string
+              p_exec_best_price: number
+              p_game_id: string
+              p_leg_type: string
+              p_line_at_bet: number
+              p_ref_price: number
+              p_side: string
+              p_snapshot_type: string
+              p_system_code: string
+              p_units: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_exec_best_book: string
+              p_exec_best_price: number
+              p_game_id: string
+              p_leg_type: string
+              p_line_at_bet: number
+              p_recommended_bankroll_pct?: number
+              p_ref_price: number
+              p_side: string
+              p_snapshot_type: string
+              p_system_code: string
+              p_units: number
+            }
+            Returns: Json
+          }
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
-      preview_leg_stake: {
-        Args: {
-          p_exec_best_book?: string
-          p_exec_best_price?: number
-          p_game_id: string
-          p_leg_type: string
-          p_line_at_bet?: number
-          p_ref_price?: number
-          p_side: string
-          p_snapshot_type?: string
-          p_system_code: string
-          p_units?: number
-          p_recommended_bankroll_pct?: number
-        }
-        Returns: Json
-      }
+      preview_leg_stake:
+        | {
+            Args: {
+              p_exec_best_book?: string
+              p_exec_best_price?: number
+              p_game_id: string
+              p_leg_type: string
+              p_line_at_bet?: number
+              p_ref_price?: number
+              p_side: string
+              p_snapshot_type?: string
+              p_system_code: string
+              p_units?: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_exec_best_book?: string
+              p_exec_best_price?: number
+              p_game_id: string
+              p_leg_type: string
+              p_line_at_bet?: number
+              p_recommended_bankroll_pct?: number
+              p_ref_price?: number
+              p_side: string
+              p_snapshot_type?: string
+              p_system_code: string
+              p_units?: number
+            }
+            Returns: Json
+          }
     }
     Enums: {
       sys_fail_stage: "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM"

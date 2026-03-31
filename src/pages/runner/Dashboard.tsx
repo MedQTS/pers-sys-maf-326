@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import RunnerLayout from "@/components/RunnerLayout";
 import RunButton from "@/components/RunButton";
 import { supabase } from "@/lib/api";
@@ -10,7 +10,19 @@ import { Clock } from "lucide-react";
 
 const currentSeason = new Date().getFullYear();
 
-type LastRunMap = Record<string, string | null>;
+type TruthRow = {
+  step_key: string;
+  step_label: string;
+  schedule_text: string | null;
+  schedule_authoritative: boolean | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_status: string | null;
+  last_trigger_source: string | null;
+  status_authoritative: boolean | null;
+  telemetry_source: string | null;
+  details: string | null;
+};
 
 function fmtTs(iso: string | null | undefined) {
   return formatAET(iso, "datetime");
@@ -18,21 +30,27 @@ function fmtTs(iso: string | null | undefined) {
 
 function StepCard({
   label,
+  stepKey,
   functionName,
   body,
   variant,
   explainer,
-  whenToRun,
-  lastRun,
+  truth,
 }: {
   label: string;
+  stepKey: string;
   functionName: string;
   body?: Record<string, unknown>;
   variant?: "default" | "outline" | "secondary";
   explainer: string;
-  whenToRun: string;
-  lastRun: string | null | undefined;
+  truth?: TruthRow | null;
 }) {
+  const scheduleText = truth?.schedule_text ?? "UNKNOWN schedule (no backend truth row)";
+  const effectiveLastRun = truth?.last_finished_at ?? truth?.last_started_at ?? null;
+  const status = truth?.last_status ?? "UNKNOWN";
+  const statusAuthoritative = truth?.status_authoritative === true;
+  const scheduleAuthoritative = truth?.schedule_authoritative === true;
+
   return (
     <div className="space-y-2">
       <RunButton label={label} functionName={functionName} body={body} variant={variant} />
@@ -40,17 +58,29 @@ function StepCard({
         <p className="text-[11px] text-muted-foreground">{explainer}</p>
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <Clock className="h-3 w-3 shrink-0" />
-          <span>{whenToRun}</span>
+          <span>{scheduleText}</span>
         </div>
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-muted-foreground">Last run: {fmtTs(lastRun)}</span>
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="text-muted-foreground">Last run: {fmtTs(effectiveLastRun)}</span>
           <Badge
-            variant={lastRun ? "default" : "secondary"}
+            variant="secondary"
             className="text-[9px] px-1.5 py-0"
           >
-            {lastRun ? "OK" : "NO DATA"}
+            {status}
+          </Badge>
+          <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+            {statusAuthoritative ? "authoritative" : "non-authoritative"}
+          </Badge>
+          <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+            {scheduleAuthoritative ? "schedule: authoritative" : "schedule: advisory"}
           </Badge>
         </div>
+        {truth?.details && <p className="text-[10px] text-muted-foreground">{truth.details}</p>}
+        {!truth && (
+          <p className="text-[10px] text-muted-foreground">
+            No RPC row for step key <span className="font-mono">{stepKey}</span>.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -58,52 +88,32 @@ function StepCard({
 
 export default function Dashboard() {
   const [runningWeekly, setRunningWeekly] = useState(false);
-  const [lastRun, setLastRun] = useState<LastRunMap>({});
+  const [truthByStep, setTruthByStep] = useState<Record<string, TruthRow>>({});
 
-  const weeklyLabel = useMemo(() => "Weekly: Sun ~11:00pm (Australia/Melbourne)", []);
-
-  async function fetchLastRuns() {
-    const results: LastRunMap = {};
+  async function fetchOperationalTruth() {
+    const map: Record<string, TruthRow> = {};
     try {
-const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, snapT30, snapT10] =
-        await Promise.all([
-          supabase.from("pers_sys_games").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_team_state").select("updated_at").order("updated_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_signals_v2").select("created_at").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_bets").select("created_at").eq("status", "SETTLED").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "OPEN").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "CURRENT").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T60").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T30").order("created_at", { ascending: false }).limit(1).single(),
-          supabase.from("pers_sys_market_snapshots").select("created_at").eq("snapshot_type", "T10").order("created_at", { ascending: false }).limit(1).single(),
-        ]);
-
-      results.pull_squiggle = games.data?.updated_at ?? null;
-      results.build_features = features.data?.updated_at ?? null;
-      results.evaluate = signals.data?.created_at ?? null;
-      results.settle = settledBets.data?.created_at ?? null;
-      results.pull_open = snapOpen.data?.created_at ?? null;
-      results.pull_current = snapCurrent.data?.created_at ?? null;
-      results.pull_t60 = snapT60.data?.created_at ?? null;
-      results.pull_t30 = snapT30.data?.created_at ?? null;
-      results.pull_t10 = snapT10.data?.created_at ?? null;
+      const { data } = await (supabase.rpc("get_runner_operational_truth" as any) as Promise<{ data: TruthRow[] | null }>);
+      for (const row of data || []) {
+        map[row.step_key] = row;
+      }
     } catch {
-      // silently ignore — timestamps just show "—"
+      // silently ignore — cards will show UNKNOWN/non-authoritative fallback text.
     }
-    setLastRun(results);
-    return results;
+    setTruthByStep(map);
+    return map;
   }
 
-  async function pollLastRun(key: keyof LastRunMap, attempts = 5, delayMs = 700) {
+  async function pollStepTruth(key: string, attempts = 5, delayMs = 700) {
     for (let i = 0; i < attempts; i++) {
-      const res = await fetchLastRuns();
-      if (res[key]) return;
+      const res = await fetchOperationalTruth();
+      if (res[key]?.last_started_at || res[key]?.last_finished_at || res[key]?.last_status) return;
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 
   useEffect(() => {
-    fetchLastRuns();
+    fetchOperationalTruth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -121,25 +131,25 @@ const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, sn
         const { error } = await supabase.functions.invoke("pers-sys-pull-squiggle", { body: { season: currentSeason } });
         if (error) throw new Error(`Pull Squiggle failed: ${error.message}`);
         toast.success("1/4 Pull Squiggle OK");
-        await pollLastRun("pull_squiggle");
+        await pollStepTruth("pull_squiggle");
       }
       {
         const { error } = await supabase.functions.invoke("pers-sys-build-features", { body: { season: currentSeason } });
         if (error) throw new Error(`Build Features failed: ${error.message}`);
         toast.success("2/4 Build Features OK");
-        await pollLastRun("build_features");
+        await pollStepTruth("build_features");
       }
       {
         const { error } = await supabase.functions.invoke("pers-sys-pull-odds-snapshot", { body: { snapshot_type: "OPEN" } });
         if (error) throw new Error(`Pull OPEN snapshot failed: ${error.message}`);
         toast.success("3/4 Pull OPEN Snapshot OK");
-        await pollLastRun("pull_open");
+        await pollStepTruth("pull_open");
       }
       {
         const { error } = await supabase.functions.invoke("pers-sys-evaluate-systems-v2", { body: { season: currentSeason } });
         if (error) throw new Error(`Evaluate Systems failed: ${error.message}`);
         toast.success("4/4 Evaluate Systems OK");
-        await pollLastRun("evaluate");
+        await pollStepTruth("evaluate");
       }
 
       const secs = Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 1000));
@@ -166,9 +176,11 @@ const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, sn
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Run pipeline</div>
-              <div className="text-sm font-mono">{weeklyLabel}</div>
+              <div className="text-sm font-mono">
+                {truthByStep.pull_squiggle?.schedule_text ?? "Operational schedule unavailable from backend truth source."}
+              </div>
               <div className="text-[11px] text-muted-foreground mt-1">
-                Runs: Pull Squiggle → Build Features → Pull OPEN Snapshot → Evaluate Systems
+                Source: backend operational truth RPC
               </div>
             </div>
             <Button onClick={runWeeklyPipeline} disabled={runningWeekly} className="font-mono text-xs">
@@ -185,39 +197,39 @@ const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, sn
 
             <StepCard
               label="Pull Squiggle"
+              stepKey="pull_squiggle"
               functionName="pers-sys-pull-squiggle"
               body={{ season: currentSeason }}
               explainer="Loads fixtures/results from Squiggle and updates games."
-              whenToRun="Weekly: Sun ~11:00pm (Australia/Melbourne)."
-              lastRun={lastRun.pull_squiggle}
+              truth={truthByStep.pull_squiggle}
             />
 
             <StepCard
               label="Build Features"
+              stepKey="build_features"
               functionName="pers-sys-build-features"
               body={{ season: currentSeason }}
               variant="secondary"
               explainer="Computes team/game features used by system rules."
-              whenToRun="After Pull Squiggle; rerun if fixtures/results change."
-              lastRun={lastRun.build_features}
+              truth={truthByStep.build_features}
             />
 
             <StepCard
               label="Evaluate Systems"
+              stepKey="evaluate"
               functionName="pers-sys-evaluate-systems-v2"
               body={{ season: currentSeason }}
               explainer="Evaluates systems and writes PASS/FAIL signals for upcoming games."
-              whenToRun="After your latest snapshot pull (OPEN or T-snap)."
-              lastRun={lastRun.evaluate}
+              truth={truthByStep.evaluate}
             />
 
             <StepCard
               label="Settle Bets"
+              stepKey="settle"
               functionName="pers-sys-settle"
               variant="outline"
               explainer="Settles UNSETTLED bets once games are FT."
-              whenToRun="Post-match: after FT (or next morning)."
-              lastRun={lastRun.settle}
+              truth={truthByStep.settle}
             />
           </div>
 
@@ -227,52 +239,52 @@ const [games, features, signals, settledBets, snapOpen, snapCurrent, snapT60, sn
 
             <StepCard
               label="Pull OPEN Snapshot"
+              stepKey="pull_open"
               functionName="pers-sys-pull-odds-snapshot"
               body={{ snapshot_type: "OPEN" }}
               variant="secondary"
               explainer="Pulls opening odds snapshot and stores market lines/prices."
-              whenToRun="Weekly: Sun ~11:00pm (Australia/Melbourne), after Pull Squiggle."
-              lastRun={lastRun.pull_open}
+              truth={truthByStep.pull_open}
             />
 
             <StepCard
               label="Pull CURRENT Snapshot"
+              stepKey="pull_current"
               functionName="pers-sys-pull-odds-snapshot"
               body={{ snapshot_type: "CURRENT" }}
               variant="outline"
               explainer="Pulls the latest odds snapshot for monitoring (UI drift). Safe to rerun."
-              whenToRun="Any time: mid-week monitoring or pre-check before matchday."
-              lastRun={lastRun.pull_current}
+              truth={truthByStep.pull_current}
             />
 
             <StepCard
               label="Pull T60 Snapshot"
+              stepKey="pull_t60"
               functionName="pers-sys-pull-odds-snapshot"
               body={{ snapshot_type: "T60" }}
               variant="outline"
               explainer="Captures price/line ~60 minutes pre-bounce."
-              whenToRun="Matchday: ~60 min pre-bounce."
-              lastRun={lastRun.pull_t60}
+              truth={truthByStep.pull_t60}
             />
 
             <StepCard
               label="Pull T30 Snapshot"
+              stepKey="pull_t30"
               functionName="pers-sys-pull-odds-snapshot"
               body={{ snapshot_type: "T30" }}
               variant="outline"
               explainer="Captures price/line ~30 minutes pre-bounce."
-              whenToRun="Matchday: ~30 min pre-bounce."
-              lastRun={lastRun.pull_t30}
+              truth={truthByStep.pull_t30}
             />
 
             <StepCard
               label="Pull T10 Snapshot"
+              stepKey="pull_t10"
               functionName="pers-sys-pull-odds-snapshot"
               body={{ snapshot_type: "T10" }}
               variant="outline"
               explainer="Captures price/line ~10 minutes pre-bounce."
-              whenToRun="Matchday: ~10 min pre-bounce."
-              lastRun={lastRun.pull_t10}
+              truth={truthByStep.pull_t10}
             />
           </div>
         </div>

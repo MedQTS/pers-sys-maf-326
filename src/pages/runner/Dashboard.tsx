@@ -96,7 +96,7 @@ export default function Dashboard() {
   async function fetchOperationalTruth() {
     const map: Record<string, TruthRow> = {};
     try {
-      const { data } = await (supabase.rpc("get_runner_operational_truth" as any) as Promise<{ data: TruthRow[] | null }>);
+      const { data } = await (supabase.rpc("get_runner_operational_truth" as any) as unknown as Promise<{ data: TruthRow[] | null }>);
       for (const row of data || []) {
         map[row.step_key] = row;
       }

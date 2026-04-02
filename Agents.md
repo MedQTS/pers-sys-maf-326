@@ -121,3 +121,23 @@ Required return format:
 2. Paste the full Governance - Agents.md content
 3. State whether any other files were changed
 4. State any wording that was intentionally cautious due to inspection unknowns
+
+## Architecture References
+
+Before planning, reviewing, or proposing changes, consult the root-level `Architecture/` folder in this repository.
+
+Use the files in `Architecture/` to understand:
+- intended system design
+- module boundaries
+- delivery gates
+- current planned scope
+- naming and terminology
+- non-goals, deferred items, and architecture direction
+
+Treat the root-level `Architecture/` folder as the design-intent reference for this repository.
+
+However:
+- do not assume the codebase fully matches the files in `Architecture/`
+- verify actual implementation from repository files before claiming something is implemented
+- if repository reality differs from `Architecture/`, state the mismatch explicitly
+- use repository code and current files as implementation truth, and `Architecture/` as intended-direction guidance

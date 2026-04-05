@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
     );
 
     // A system is in the side/line collision queue only if collision_rank is not null
-    // AND its primary market is H2H or LINE. TOTALS systems (e.g. SYS_8) stay outside.
+    // AND its primary market is H2H or LINE. TOTALS systems (e.g. SYS_8, SYS_9) stay outside.
     const isInCollisionQueue = (sysCode: string, primaryMarket: string): boolean => {
       const p = priByCode.get(sysCode);
       if (!p || p.collision_rank == null) return false;
@@ -1715,6 +1715,69 @@ Deno.serve(async (req) => {
                   })
                 );
               }
+            }
+          }
+        }
+
+        // ==============================
+        // SYS_9 — Collingwood High-Total Suppression (PROVISIONAL+) — UNDER 189.5
+        // ==============================
+        if (system_code === "SYS_9") {
+          const homeName = g.home_team?.canonical_name ?? "";
+          const awayName = g.away_team?.canonical_name ?? "";
+
+          if (homeName !== "Collingwood" && awayName !== "Collingwood") {
+            modelPass = false;
+            reason.fail = "non_target_team";
+          } else if (!openTotals || !modelTotals) {
+            modelPass = false;
+            reason.fail = "missing_totals_data";
+          } else {
+            const modelTotal = modelTotals.total_line;
+            const underPrice = modelTotals.under_price;
+            const stakingCfg = sys.staking_config ?? {} as Record<string, any>;
+            const modelTotalMin = readCfgNum(stakingCfg, ["model_total_min"], 178)!;
+            const underPriceMin = readCfgNum(stakingCfg, ["under_price_min"], 1.45)!;
+            const fixedLine = readCfgNum(stakingCfg, ["fixed_target_total_line"], 189.5)!;
+
+            reason.target_team = "Collingwood";
+            reason.sys9_variant = "U189.5_single_leg_v1";
+            reason.model_total = modelTotal;
+            reason.under_price = underPrice;
+
+            if (modelTotal === null || modelTotal < modelTotalMin) {
+              modelPass = false;
+              reason.fail = "model_total_below_threshold";
+            } else if (underPrice === null || underPrice === undefined) {
+              modelPass = false;
+              reason.fail = "missing_under_price";
+            } else if (underPrice < underPriceMin) {
+              modelPass = false;
+              reason.fail = "under_price_below_threshold";
+            }
+
+            if (modelPass) {
+              const basePct = readCfgNum(stakingCfg, ["base_bankroll_pct", "base_pct_bankroll"], 1.0)!;
+              let stake = basePct;
+              const maxPct = readCfgNum(stakingCfg, ["max_pct_bankroll"], 1.5);
+              if (maxPct !== null && stake > maxPct) {
+                stake = maxPct;
+              }
+              reason.recommended_units = stake;
+
+              reason.legs.push(
+                buildLegTotals({
+                  system_code,
+                  snapshot_type: modelSnap,
+                  side: "UNDER",
+                  line_at_bet: fixedLine,
+                  ref_price: underPrice,
+                  exec_best_price: null,
+                  exec_best_book: null,
+                  ref_books_observed: modelTotals.ref_books_observed ?? [],
+                  exec_books_observed: modelTotals.exec_books_observed ?? [],
+                })
+              );
             }
           }
         }

@@ -477,6 +477,7 @@ Deno.serve(async (req) => {
       const awayH2hMedian = median(refAwayPrices);
 
       if (
+        refH2hBooks.size >= h2hMinBooks &&
         refHomePrices.length > 0 &&
         refAwayPrices.length > 0 &&
         Number.isFinite(homeH2hMedian) &&

@@ -58,7 +58,23 @@ function pickBestLineAtAnchor(candidates: LineCandidate[], anchorLine: number | 
   return best;
 }
 
-// Totals sufficiency thresholds by snapshot type
+// Sufficiency thresholds by snapshot type per market
+const H2H_MIN_BOOKS: Record<string, number> = {
+  OPEN: 2,
+  T60: 1,
+  T30: 1,
+  T10: 1,
+  CURRENT: 1,
+};
+
+const LINE_MIN_BOOKS: Record<string, number> = {
+  OPEN: 2,
+  T60: 1,
+  T30: 1,
+  T10: 1,
+  CURRENT: 1,
+};
+
 const TOTALS_MIN_BOOKS: Record<string, number> = {
   OPEN: 3,
   T60: 2,

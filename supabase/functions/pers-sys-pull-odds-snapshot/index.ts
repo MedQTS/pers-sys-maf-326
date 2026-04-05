@@ -258,6 +258,8 @@ Deno.serve(async (req) => {
     let skipped_no_ref_totals = 0;
 
     const TOL_MS = 6 * 60 * 60 * 1000;
+    const h2hMinBooks = H2H_MIN_BOOKS[snapshotType] ?? 1;
+    const lineMinBooks = LINE_MIN_BOOKS[snapshotType] ?? 1;
     const totalsMinBooks = TOTALS_MIN_BOOKS[snapshotType] ?? 1;
 
     for (const game of eligibleGames) {

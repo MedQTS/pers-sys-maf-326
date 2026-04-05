@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
     );
 
     // A system is in the side/line collision queue only if collision_rank is not null
-    // AND its primary market is H2H or LINE. TOTALS systems (e.g. SYS_8) stay outside.
+    // AND its primary market is H2H or LINE. TOTALS systems (e.g. SYS_8, SYS_9) stay outside.
     const isInCollisionQueue = (sysCode: string, primaryMarket: string): boolean => {
       const p = priByCode.get(sysCode);
       if (!p || p.collision_rank == null) return false;

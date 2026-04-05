@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import RunnerLayout from "@/components/RunnerLayout";
 import { supabase } from "@/lib/api";
 
+const formatAUD = (v: number) =>
+  `$${v.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function dollarProfit(b: any): number {
+  if (b.result === "WIN") return b.stake_amount * (b.price - 1);
+  if (b.result === "LOSS") return -b.stake_amount;
+  return 0;
+}
+
 export default function PerformancePage() {
   const [bets, setBets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +36,8 @@ export default function PerformancePage() {
     wins: number;
     losses: number;
     pushes: number;
+    totalStaked: number;
+    dollarProfit: number;
     totalUnits: number;
     profitUnits: number;
     maxLosing: number;
@@ -36,11 +47,14 @@ export default function PerformancePage() {
     if (!statsBySystem[b.system_code]) {
       statsBySystem[b.system_code] = {
         bets: 0, wins: 0, losses: 0, pushes: 0,
+        totalStaked: 0, dollarProfit: 0,
         totalUnits: 0, profitUnits: 0, maxLosing: 0,
       };
     }
     const s = statsBySystem[b.system_code];
     s.bets++;
+    s.totalStaked += b.stake_amount || 0;
+    s.dollarProfit += dollarProfit(b);
     s.totalUnits += b.units;
     s.profitUnits += b.profit_units || 0;
     if (b.result === "WIN") s.wins++;
@@ -65,9 +79,9 @@ export default function PerformancePage() {
   }
 
   // Overall
-  const totalProfit = bets.reduce((sum, b) => sum + (b.profit_units || 0), 0);
-  const totalStaked = bets.reduce((sum, b) => sum + b.units, 0);
-  const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+  const totalDollarProfit = bets.reduce((sum, b) => sum + dollarProfit(b), 0);
+  const totalDollarStaked = bets.reduce((sum, b) => sum + (b.stake_amount || 0), 0);
+  const roi = totalDollarStaked > 0 ? (totalDollarProfit / totalDollarStaked) * 100 : 0;
 
   return (
     <RunnerLayout>
@@ -85,15 +99,15 @@ export default function PerformancePage() {
               <StatCard label="Total Bets" value={String(bets.length)} />
               <StatCard
                 label="Profit"
-                value={`${totalProfit >= 0 ? "+" : ""}${totalProfit.toFixed(2)}u`}
-                color={totalProfit >= 0 ? "text-win" : "text-loss"}
+                value={`${totalDollarProfit >= 0 ? "+" : ""}${formatAUD(totalDollarProfit)}`}
+                color={totalDollarProfit >= 0 ? "text-win" : "text-loss"}
               />
               <StatCard
                 label="ROI"
                 value={`${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`}
                 color={roi >= 0 ? "text-win" : "text-loss"}
               />
-              <StatCard label="Staked" value={`${totalStaked.toFixed(1)}u`} />
+              <StatCard label="Staked" value={formatAUD(totalDollarStaked)} />
             </div>
 
             {/* Per-system breakdown */}
@@ -102,13 +116,13 @@ export default function PerformancePage() {
                 By System
               </h2>
               {Object.entries(statsBySystem).map(([sys, s]) => {
-                const sysRoi = s.totalUnits > 0 ? (s.profitUnits / s.totalUnits) * 100 : 0;
+                const sysRoi = s.totalStaked > 0 ? (s.dollarProfit / s.totalStaked) * 100 : 0;
                 return (
                   <div key={sys} className="runner-card">
                     <div className="flex items-center justify-between mb-3">
                       <span className="font-mono font-semibold text-sm">{sys}</span>
-                      <span className={`font-mono text-sm font-bold ${s.profitUnits >= 0 ? "text-win" : "text-loss"}`}>
-                        {s.profitUnits >= 0 ? "+" : ""}{s.profitUnits.toFixed(2)}u
+                      <span className={`font-mono text-sm font-bold ${s.dollarProfit >= 0 ? "text-win" : "text-loss"}`}>
+                        {s.dollarProfit >= 0 ? "+" : ""}{formatAUD(s.dollarProfit)}
                       </span>
                     </div>
                     <div className="grid grid-cols-5 gap-2 text-xs font-mono">
@@ -128,7 +142,7 @@ export default function PerformancePage() {
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Staked</span>
-                        {s.totalUnits.toFixed(1)}u
+                        {formatAUD(s.totalStaked)}
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Max L</span>

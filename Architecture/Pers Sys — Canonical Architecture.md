@@ -1,6 +1,7 @@
 Pers Sys — Canonical Architecture
 
 — Canonical Architecture
+
 1. Purpose
 
 This document defines the canonical architecture for the Pers System AFL Betting project as it stands after repo review, live-environment checks, and initial automation wiring.
@@ -193,9 +194,9 @@ matching between recommendations and confirmed bets
 
 Primary RPC/path of concern includes:
 
-accept_leg_create_bet
+accept\_leg\_create\_bet
 
-preview stake RPCs such as preview_leg_stake
+preview stake RPCs such as preview\_leg\_stake
 
 4.9 Settlement layer
 
@@ -287,6 +288,10 @@ tolerance for imperfect alignment between cron timing and actual game timing
 
 The exact cadence and tolerance window are operational settings, not architectural constants, but the architecture requires that they exist and be verified.
 
+Live update from later thread work: the canonical dispatcher model has now been activated in production via a recurring cron job targeting pers-sys-dispatch-watchers. This confirms the intended architecture path (cron -> dispatcher -> run-watcher) is now live. The remaining open issue is not whether watcher cron exists, but whether cadence, tolerance, duplicate behavior, and downstream alert content are all fully aligned with business requirements.
+
+Later live verification confirmed that the intended dispatcher model is now active in production through a recurring cron job targeting pers-sys-dispatch-watchers. This reinforces the architectural position that cron should enter through the dispatcher/orchestration layer rather than schedule separate low-level watcher steps. Remaining open items are operational-verification matters such as cadence, tolerance, duplicate handling, and downstream alert correctness.
+
 7. Identity and suppression rules
 7.1 Hard rule: suppression is per leg, not per game
 
@@ -310,15 +315,15 @@ different sides or lines within the same game
 
 At minimum, the placed-bet identity should be based on a stable leg signature such as:
 
-game_id
+game\_id
 
-system_code
+system\_code
 
-leg_type
+leg\_type
 
 side
 
-line_at_bet or normalized market line where applicable
+line\_at\_bet or normalized market line where applicable
 
 7.3 Distinguish placed-bet identity from change-detection identity
 
@@ -340,13 +345,13 @@ The system distinguishes between:
 
 recommendation-stage values
 
-such as recommended_units
+such as recommended\_units
 
-possibly recommended_bankroll_pct
+possibly recommended\_bankroll\_pct
 
 accepted-bet values
 
-such as final stake_amount
+such as final stake\_amount
 
 A critical architectural rule is:
 
@@ -368,7 +373,7 @@ The canonical evaluation path is v2-based.
 
 The architecture should align around:
 
-pers_sys_systems_v2
+pers\_sys\_systems\_v2
 
 v2 evaluator flow
 
@@ -384,9 +389,9 @@ Supabase database
 
 Supabase Edge Functions
 
-pg_cron
+pg\_cron
 
-pg_net
+pg\_net
 
 external odds/data providers
 
@@ -445,7 +450,7 @@ scheduler wiring and secrets may still be incomplete
 
 These are not delivery tasks; they are architecture items that remain open or require hard confirmation:
 
-watcher cadence and tolerance-window rules not yet finally locked
+watcher dispatcher cron is now activated in live production, but watcher cadence and tolerance-window rules are still not finally locked
 
 duplicate handling expectations across repeated watcher hits need explicit verification
 
@@ -486,3 +491,4 @@ duplicate-aware
 environment-aware
 
 explicit about unresolved contracts
+

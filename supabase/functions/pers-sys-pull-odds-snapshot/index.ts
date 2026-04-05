@@ -58,7 +58,23 @@ function pickBestLineAtAnchor(candidates: LineCandidate[], anchorLine: number | 
   return best;
 }
 
-// Totals sufficiency thresholds by snapshot type
+// Sufficiency thresholds by snapshot type per market
+const H2H_MIN_BOOKS: Record<string, number> = {
+  OPEN: 2,
+  T60: 1,
+  T30: 1,
+  T10: 1,
+  CURRENT: 1,
+};
+
+const LINE_MIN_BOOKS: Record<string, number> = {
+  OPEN: 2,
+  T60: 1,
+  T30: 1,
+  T10: 1,
+  CURRENT: 1,
+};
+
 const TOTALS_MIN_BOOKS: Record<string, number> = {
   OPEN: 3,
   T60: 2,
@@ -242,6 +258,8 @@ Deno.serve(async (req) => {
     let skipped_no_ref_totals = 0;
 
     const TOL_MS = 6 * 60 * 60 * 1000;
+    const h2hMinBooks = H2H_MIN_BOOKS[snapshotType] ?? 1;
+    const lineMinBooks = LINE_MIN_BOOKS[snapshotType] ?? 1;
     const totalsMinBooks = TOTALS_MIN_BOOKS[snapshotType] ?? 1;
 
     for (const game of eligibleGames) {
@@ -459,6 +477,7 @@ Deno.serve(async (req) => {
       const awayH2hMedian = median(refAwayPrices);
 
       if (
+        refH2hBooks.size >= h2hMinBooks &&
         refHomePrices.length > 0 &&
         refAwayPrices.length > 0 &&
         Number.isFinite(homeH2hMedian) &&
@@ -489,6 +508,7 @@ Deno.serve(async (req) => {
 
       // ---- Store LINE snapshot ----
       if (
+        refLineBooks.size >= lineMinBooks &&
         refHomeLines.length > 0 &&
         refAwayLines.length > 0 &&
         refHomeLinePrices.length > 0 &&

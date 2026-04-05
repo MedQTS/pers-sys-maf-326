@@ -89,6 +89,13 @@ type CandidateRow = {
   textLine: string;
 };
 
+type LoggedExcludedRow = {
+  signal: SignalRow;
+  game: GameRow | null;
+  bet: BetRow | null;
+  textLine: string;
+};
+
 function safeJson(x: unknown): Record<string, unknown> | null {
   if (x == null) return null;
   if (typeof x === "object") return x as Record<string, unknown>;
@@ -157,6 +164,15 @@ function ruleSummary(signal: SignalRow): string {
   return "T30 READY";
 }
 
+function signalKind(signal: SignalRow): "PRIMARY / BASE" | "AMPLIFIER / OVERLAY" {
+  const r = safeJson(signal.reason_json) || {};
+  const overlayChild = r["overlay_child"];
+  if (overlayChild && typeof overlayChild === "object") {
+    return "AMPLIFIER / OVERLAY";
+  }
+  return "PRIMARY / BASE";
+}
+
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -207,6 +223,10 @@ function betMatchesLogged(signal: SignalRow, bet: BetRow): boolean {
   return true;
 }
 
+function findMatchingLoggedBet(signal: SignalRow, bets: BetRow[]): BetRow | null {
+  return bets.find((bet) => betMatchesLogged(signal, bet)) ?? null;
+}
+
 function buildTextLine(row: CandidateRow): string {
   const signal = row.signal;
   const game = row.game;
@@ -223,6 +243,21 @@ function buildTextLine(row: CandidateRow): string {
   const rule = ruleSummary(signal);
 
   return `[${row.statusLabel}] ${gameText} | ${venue} | ${signal.system_code} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule}`;
+}
+
+function buildAcceptedTextLine(signal: SignalRow, game: GameRow | null, bet: BetRow | null): string {
+  const gameText = gameLabel(game);
+  const venue = game?.venue ?? "—";
+  const market = String(signal.leg_type ?? "?").toUpperCase();
+  const side = String(signal.side ?? "?").toUpperCase();
+  const line = market === "LINE" ? ` ${fmtLine(signal.line_at_bet)}` : "";
+  const price = fmtPrice(bet?.price ?? signal.exec_best_price ?? signal.ref_price ?? null);
+  const stake = fmtStake(bet?.stake_amount ?? null);
+  const book = bet?.book ?? signal.exec_best_book ?? "—";
+  const kind = signalKind(signal);
+  const rule = ruleSummary(signal);
+
+  return `[ALREADY ACCEPTED] ${gameText} | ${venue} | ${signal.system_code} | ${kind} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule} | DO NOT DUPLICATE`;
 }
 
 function sortCandidates(a: CandidateRow, b: CandidateRow): number {
@@ -471,6 +506,25 @@ Deno.serve(async (req) => {
     const actionRows = candidateRows.filter((r) => r.statusLabel === "NEW" || r.statusLabel === "CHANGED");
     const previousRows = candidateRows.filter((r) => r.statusLabel === "PREVIOUSLY_SENT");
 
+    const acceptedRows: LoggedExcludedRow[] = loggedExcluded
+      .map((signal) => {
+        const game = gamesById.get(signal.game_id) ?? null;
+        const bet = findMatchingLoggedBet(signal, unsettledBets);
+        return {
+          signal,
+          game,
+          bet,
+          textLine: buildAcceptedTextLine(signal, game, bet),
+        };
+      })
+      .sort((a, b) => {
+        const ta = a.game?.start_time_aet ? new Date(a.game.start_time_aet).getTime() : 0;
+        const tb = b.game?.start_time_aet ? new Date(b.game.start_time_aet).getTime() : 0;
+        if (ta !== tb) return ta - tb;
+        if (a.signal.system_code !== b.signal.system_code) return a.signal.system_code.localeCompare(b.signal.system_code);
+        return a.textLine.localeCompare(b.textLine);
+      });
+
     if (actionRows.length === 0) {
       return new Response(
         JSON.stringify({
@@ -488,6 +542,7 @@ Deno.serve(async (req) => {
           },
           preview: {
             action_now: actionRows.map((r) => r.textLine),
+            already_accepted_or_placed: acceptedRows.map((r) => r.textLine),
             previously_sent: previousRows.map((r) => r.textLine),
           },
         }),
@@ -504,11 +559,20 @@ Deno.serve(async (req) => {
       ...actionRows.map((r) => r.textLine),
     ];
 
+    const acceptedSection = acceptedRows.length > 0
+      ? [
+          "",
+          "ALREADY ACCEPTED / ALREADY PLACED — DO NOT DUPLICATE",
+          "-----------------------------------------------------",
+          ...acceptedRows.map((r) => r.textLine),
+        ]
+      : [];
+
     const previousSection = previousRows.length > 0
       ? [
           "",
-          "PREVIOUSLY SENT — BET NOT LOGGED",
-          "--------------------------------",
+          "PREVIOUSLY SENT / NON-ACTIONABLE — BET NOT LOGGED",
+          "-------------------------------------------------",
           ...previousRows.map((r) => r.textLine),
         ]
       : [];
@@ -521,7 +585,7 @@ Deno.serve(async (req) => {
       `Logged excluded: ${loggedExcluded.length}`,
     ];
 
-    const emailText = [...actionSection, ...previousSection, ...footer].join("\n");
+    const emailText = [...actionSection, ...acceptedSection, ...previousSection, ...footer].join("\n");
     const alertHash = await sha256Hex(
       JSON.stringify({
         snapshot_type: snapshotType,
@@ -557,6 +621,11 @@ Deno.serve(async (req) => {
             logged_excluded: loggedExcluded.length,
           },
           alert_hash: alertHash,
+          preview: {
+            action_now: actionRows.map((r) => r.textLine),
+            already_accepted_or_placed: acceptedRows.map((r) => r.textLine),
+            previously_sent: previousRows.map((r) => r.textLine),
+          },
           email_text: emailText,
         }),
         {

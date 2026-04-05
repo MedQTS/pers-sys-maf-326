@@ -1,0 +1,201 @@
+﻿REPO FILE STRUCTURE
+Generated: 2026-04-05 22:48:25
+Project: AFL Betting System
+Root: C:\AI\Repos\pers-sys-maf-326
+
+[FILE] .env
+[FILE] .gitignore
+[DIR ] .lovable
+[FILE] .lovable\plan.md
+[FILE] afl09-25.csv
+[FILE] Agents.md
+[DIR ] Architecture
+[DIR ] Architecture\_sync-backups
+[DIR ] Architecture\_sync-backups\20260402-163612
+[FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Canonical Architecture.md
+[FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Delivery Gates.md
+[FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Project Snapshot.md
+[FILE] Architecture\Pers Sys — Canonical Architecture.md
+[FILE] Architecture\Pers Sys — Delivery Gates.md
+[FILE] Architecture\Pers Sys — Project Snapshot.md
+[FILE] Architecture\test123
+[FILE] bun.lock
+[FILE] bun.lockb
+[FILE] components.json
+[DIR ] docs
+[FILE] docs\staking-audit.md
+[FILE] docs\system-audit-map.md
+[FILE] docs\system-audit-verified.md
+[FILE] eslint.config.js
+[FILE] index.html
+[FILE] package.json
+[FILE] package-lock.json
+[FILE] postcss.config.js
+[DIR ] public
+[FILE] public\favicon.ico
+[FILE] public\placeholder.svg
+[FILE] public\robots.txt
+[FILE] README.md
+[FILE] repo-file-structure.txt
+[DIR ] src
+[FILE] src\App.css
+[FILE] src\App.tsx
+[DIR ] src\components
+[FILE] src\components\NavLink.tsx
+[FILE] src\components\RunButton.tsx
+[FILE] src\components\RunnerLayout.tsx
+[DIR ] src\components\ui
+[FILE] src\components\ui\accordion.tsx
+[FILE] src\components\ui\alert.tsx
+[FILE] src\components\ui\alert-dialog.tsx
+[FILE] src\components\ui\aspect-ratio.tsx
+[FILE] src\components\ui\avatar.tsx
+[FILE] src\components\ui\badge.tsx
+[FILE] src\components\ui\breadcrumb.tsx
+[FILE] src\components\ui\button.tsx
+[FILE] src\components\ui\calendar.tsx
+[FILE] src\components\ui\card.tsx
+[FILE] src\components\ui\carousel.tsx
+[FILE] src\components\ui\chart.tsx
+[FILE] src\components\ui\checkbox.tsx
+[FILE] src\components\ui\collapsible.tsx
+[FILE] src\components\ui\command.tsx
+[FILE] src\components\ui\context-menu.tsx
+[FILE] src\components\ui\dialog.tsx
+[FILE] src\components\ui\drawer.tsx
+[FILE] src\components\ui\dropdown-menu.tsx
+[FILE] src\components\ui\form.tsx
+[FILE] src\components\ui\hover-card.tsx
+[FILE] src\components\ui\input.tsx
+[FILE] src\components\ui\input-otp.tsx
+[FILE] src\components\ui\label.tsx
+[FILE] src\components\ui\menubar.tsx
+[FILE] src\components\ui\navigation-menu.tsx
+[FILE] src\components\ui\pagination.tsx
+[FILE] src\components\ui\popover.tsx
+[FILE] src\components\ui\progress.tsx
+[FILE] src\components\ui\radio-group.tsx
+[FILE] src\components\ui\resizable.tsx
+[FILE] src\components\ui\scroll-area.tsx
+[FILE] src\components\ui\select.tsx
+[FILE] src\components\ui\separator.tsx
+[FILE] src\components\ui\sheet.tsx
+[FILE] src\components\ui\sidebar.tsx
+[FILE] src\components\ui\skeleton.tsx
+[FILE] src\components\ui\slider.tsx
+[FILE] src\components\ui\sonner.tsx
+[FILE] src\components\ui\switch.tsx
+[FILE] src\components\ui\table.tsx
+[FILE] src\components\ui\tabs.tsx
+[FILE] src\components\ui\textarea.tsx
+[FILE] src\components\ui\toast.tsx
+[FILE] src\components\ui\toaster.tsx
+[FILE] src\components\ui\toggle.tsx
+[FILE] src\components\ui\toggle-group.tsx
+[FILE] src\components\ui\tooltip.tsx
+[FILE] src\components\ui\use-toast.ts
+[DIR ] src\hooks
+[FILE] src\hooks\use-mobile.tsx
+[FILE] src\hooks\use-toast.ts
+[FILE] src\index.css
+[DIR ] src\integrations
+[DIR ] src\integrations\supabase
+[FILE] src\integrations\supabase\client.ts
+[FILE] src\integrations\supabase\types.ts
+[DIR ] src\lib
+[FILE] src\lib\api.ts
+[FILE] src\lib\marketSnapshots.ts
+[FILE] src\lib\time.ts
+[FILE] src\lib\utils.ts
+[FILE] src\main.tsx
+[DIR ] src\pages
+[FILE] src\pages\Index.tsx
+[FILE] src\pages\NotFound.tsx
+[DIR ] src\pages\runner
+[FILE] src\pages\runner\BetsPage.tsx
+[FILE] src\pages\runner\Dashboard.tsx
+[FILE] src\pages\runner\GameDetail.tsx
+[FILE] src\pages\runner\PerformancePage.tsx
+[FILE] src\pages\runner\WeekView_v2.tsx
+[DIR ] src\test
+[FILE] src\test\example.test.ts
+[FILE] src\test\setup.ts
+[FILE] src\vite-env.d.ts
+[DIR ] supabase
+[FILE] supabase\.env
+[FILE] supabase\config.toml
+[DIR ] supabase\functions
+[DIR ] supabase\functions\pers-sys-audit-oddsapi-names
+[FILE] supabase\functions\pers-sys-audit-oddsapi-names\index.ts
+[DIR ] supabase\functions\pers-sys-build-features
+[FILE] supabase\functions\pers-sys-build-features\index.ts
+[DIR ] supabase\functions\pers-sys-dispatch-watchers
+[FILE] supabase\functions\pers-sys-dispatch-watchers\index.ts
+[DIR ] supabase\functions\pers-sys-evaluate-systems-v2
+[FILE] supabase\functions\pers-sys-evaluate-systems-v2\index.ts
+[DIR ] supabase\functions\pers-sys-pull-odds-snapshot
+[FILE] supabase\functions\pers-sys-pull-odds-snapshot\index.ts
+[DIR ] supabase\functions\pers-sys-pull-squiggle
+[FILE] supabase\functions\pers-sys-pull-squiggle\index.ts
+[DIR ] supabase\functions\pers-sys-run-nightly-maintenance
+[FILE] supabase\functions\pers-sys-run-nightly-maintenance\index.ts
+[DIR ] supabase\functions\pers-sys-run-open-nightly
+[FILE] supabase\functions\pers-sys-run-open-nightly\index.ts
+[DIR ] supabase\functions\pers-sys-run-watcher
+[FILE] supabase\functions\pers-sys-run-watcher\index.ts
+[DIR ] supabase\functions\pers-sys-send-t30-alert
+[FILE] supabase\functions\pers-sys-send-t30-alert\index.ts
+[DIR ] supabase\functions\pers-sys-send-test-email
+[FILE] supabase\functions\pers-sys-send-test-email\index.ts
+[DIR ] supabase\functions\pers-sys-settle
+[FILE] supabase\functions\pers-sys-settle\index.ts
+[DIR ] supabase\migrations
+[FILE] supabase\migrations\20260301051225_07c54fcd-c4d6-4a95-8fad-86ad379a76a3.sql
+[FILE] supabase\migrations\20260303074805_5042ec4f-0dbc-4f73-8395-ca871c33458d.sql
+[FILE] supabase\migrations\20260303125048_b00b5642-8707-498f-8097-6d6fd43ff9e8.sql
+[FILE] supabase\migrations\20260303125214_affe5b7c-9542-4222-b36a-7a0bfb11b961.sql
+[FILE] supabase\migrations\20260303130326_54af2cb1-260a-4f0c-b949-2d33bb180e57.sql
+[FILE] supabase\migrations\20260303131246_de8cf357-1aec-4d5a-bdf7-2be10af5eff6.sql
+[FILE] supabase\migrations\20260303165356_774f3091-62e9-4fa9-8396-9395e6b3a202.sql
+[FILE] supabase\migrations\20260303170258_bef94028-c431-4a52-8e83-e5323802d269.sql
+[FILE] supabase\migrations\20260303173052_abf480a7-c419-46d9-9a9a-261a00e75619.sql
+[FILE] supabase\migrations\20260303174813_bc32a0f0-096c-481c-922b-4999500f763e.sql
+[FILE] supabase\migrations\20260303183558_a405ea6a-f432-4ec7-ba88-3171586630cd.sql
+[FILE] supabase\migrations\20260303210613_c3eefe38-d98f-43e1-8335-3c6ec2f01897.sql
+[FILE] supabase\migrations\20260304003154_5052c948-3e87-4512-b2ff-c6809387aabc.sql
+[FILE] supabase\migrations\20260304062027_6f0d81a6-678f-4557-840a-5028b26b766e.sql
+[FILE] supabase\migrations\20260304090711_616bd13a-a28f-4d8c-a2c4-da5e124b093e.sql
+[FILE] supabase\migrations\20260304091232_fa0157b4-a9a1-4b39-be69-4b8db5f730aa.sql
+[FILE] supabase\migrations\20260304094217_4217c20c-8f4a-4fa4-81bf-9d569fb64857.sql
+[FILE] supabase\migrations\20260304095627_06c94f78-ee49-4fe2-b1cf-7d111c4167d9.sql
+[FILE] supabase\migrations\20260305113454_41cb26fb-cb75-4b31-a041-e0150ac2ab69.sql
+[FILE] supabase\migrations\20260305162417_5934b83d-1de1-430a-9c5f-f13dd2df4995.sql
+[FILE] supabase\migrations\20260306220849_6b0f6eeb-1f7d-457f-8b77-8a4d20345635.sql
+[FILE] supabase\migrations\20260306225126_65e524fb-7180-4589-86c4-9b640536afa6.sql
+[FILE] supabase\migrations\20260306232724_14c23a25-52eb-4306-a269-1ec79419d232.sql
+[FILE] supabase\migrations\20260307010127_13f85c26-1833-485c-9d24-79b3158dabbe.sql
+[FILE] supabase\migrations\20260308135552_e3c73cc1-ef46-4cbb-8c7e-2134e0d746e1.sql
+[FILE] supabase\migrations\20260309022611_15084442-ef48-4a61-8711-ebcc9870aeae.sql
+[FILE] supabase\migrations\20260309031704_16a31a53-2d34-4cf7-8986-6714e9cb3785.sql
+[FILE] supabase\migrations\20260309033444_aec74a83-f0fc-442a-8f08-393d51674572.sql
+[FILE] supabase\migrations\20260309043559_e17356a2-fcdb-4d60-9d25-bf29b3160442.sql
+[FILE] supabase\migrations\20260309063133_aa58c819-8525-4e86-9144-d37309dcbdbb.sql
+[FILE] supabase\migrations\20260309070329_16224753-ad6e-4d37-8b2a-e1bde01d1f75.sql
+[FILE] supabase\migrations\20260309073238_02f051a5-fb42-48e2-9f51-92af501a5edc.sql
+[FILE] supabase\migrations\20260309095750_ffaf2749-7b04-4392-84b5-4946db7b0fff.sql
+[FILE] supabase\migrations\20260309103655_6d5a985b-92e8-4f0b-b854-3c5a24292373.sql
+[FILE] supabase\migrations\20260309113000_1f5c0d38-canonical-staking-fields.sql
+[FILE] supabase\migrations\20260309113100_7ab4d9bb-canonical-staking-rpcs.sql
+[FILE] supabase\migrations\20260309113200_create_signal_audit_v2.sql
+[FILE] supabase\migrations\20260309113300_add_collision_rank_to_system_priority.sql
+[FILE] supabase\migrations\20260309113400_repoint_system_priority_fk_to_v2.sql
+[FILE] supabase\migrations\20260309113500_add_sys8_totals_to_systems_v2.sql
+[FILE] supabase\migrations\20260309113600_normalize_systems_v2_config_keys.sql
+[FILE] supabase\migrations\20260330001000_backfill_one_u_calibration_keys.sql
+[FILE] supabase\migrations\20260330012000_add_runner_operational_truth_rpc.sql
+[FILE] tailwind.config.ts
+[FILE] tsconfig.app.json
+[FILE] tsconfig.json
+[FILE] tsconfig.node.json
+[FILE] vite.config.ts
+[FILE] vitest.config.ts

@@ -1,19 +1,35 @@
 
 
-## Plan: Replace Overlay Block with Full SYS_2 Spec
+## Fix: Add missing enum values to `sys_signal_status`
 
-### What changes
-**File**: `supabase/functions/pers-sys-evaluate-systems-v2/index.ts` (lines 1084-1168)
+### Problem
+The `sys_signal_status` Postgres enum currently only contains `READY` and `PENDING`. The evaluator code writes four statuses: `READY`, `PENDING`, `FAIL`, and `BLOCKED`. Both the signals table (`signal_status`) and audit table (`audit_status`) use this same enum. Every evaluation attempt that results in FAIL or BLOCKED silently errors on the database upsert, meaning audit rows are lost and blocked signals can't be written.
 
-Replace the entire overlay section with the provided block, which adds:
+### Root cause
+The enum was created with only two values. The evaluator code expects four. This has been broken since the evaluator started using FAIL/BLOCKED statuses.
 
-1. **Stale row cleanup**: When OPEN or T30 snapshots are missing, or when CLV does not pass the threshold, any prior overlay row for that game/system is explicitly deleted
-2. **PENDING support**: If CLV passes but T30 market data is incomplete (`hasMarketData` returns false), the overlay is written as PENDING with `fail: "waiting_overlay_snapshot"`
-3. **Richer reason_json**: Includes `overlay.depends_on`, `overlay_child.clv_rel`, `overlay_child.clv_min`, and `overlay_child.side`
-4. **Upsert pattern**: Uses `.upsert()` with `onConflict: "system_code,game_id,execution_snapshot,leg_type,side"` instead of manual select+insert/update
+### Fix (1 migration)
+Create a new Supabase migration that adds the two missing enum values:
 
-### Technical detail
-- Lines 1084-1168 are replaced wholesale
-- No other lines in the file change
-- Edge function will be redeployed after edit
+```sql
+ALTER TYPE public.sys_signal_status ADD VALUE IF NOT EXISTS 'BLOCKED';
+ALTER TYPE public.sys_signal_status ADD VALUE IF NOT EXISTS 'FAIL';
+```
+
+### What this fixes
+- Audit rows for FAIL and BLOCKED will persist correctly
+- BLOCKED signals (dominance/collision) will write to `pers_sys_signals_v2`
+- The Collingwood exclusion (SYS_8 `excluded_team`) audit rows will persist
+- No edge function code changes needed — the code is already correct
+
+### What this does NOT change
+- No evaluator logic changes
+- No frontend changes
+- No staking or RPC changes
+- No other schema changes
+
+### Verification
+After migration, invoke `pers-sys-evaluate-systems-v2` and confirm:
+1. No `invalid input value for enum sys_signal_status` errors in edge function logs
+2. `pers_sys_signal_audit_v2` contains rows with `audit_status = 'FAIL'` and `audit_status = 'BLOCKED'`
 

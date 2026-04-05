@@ -1727,8 +1727,8 @@ Deno.serve(async (req) => {
           const awayName = g.away_team?.canonical_name ?? "";
 
           if (homeName !== "Collingwood" && awayName !== "Collingwood") {
-            modelPass = false;
-            reason.fail = "non_target_team";
+            // Skip SYS_9 entirely for non-Collingwood games — no audit, no signal
+            continue;
           } else if (!openTotals || !modelTotals) {
             modelPass = false;
             reason.fail = "missing_totals_data";

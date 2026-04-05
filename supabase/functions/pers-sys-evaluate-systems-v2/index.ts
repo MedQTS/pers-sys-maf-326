@@ -1618,8 +1618,8 @@ Deno.serve(async (req) => {
         // ==============================
         if (system_code === "SYS_8") {
           // Collingwood exclusion — SYS_8 does not evaluate games involving Collingwood
-          const homeName = (g as any).home_team?.canonical_name ?? "";
-          const awayName = (g as any).away_team?.canonical_name ?? "";
+          const homeName = g.home_team?.canonical_name ?? "";
+          const awayName = g.away_team?.canonical_name ?? "";
           if (homeName === "Collingwood" || awayName === "Collingwood") {
             modelPass = false;
             reason.fail = "excluded_team";

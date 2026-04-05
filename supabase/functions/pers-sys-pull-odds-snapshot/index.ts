@@ -508,6 +508,7 @@ Deno.serve(async (req) => {
 
       // ---- Store LINE snapshot ----
       if (
+        refLineBooks.size >= lineMinBooks &&
         refHomeLines.length > 0 &&
         refAwayLines.length > 0 &&
         refHomeLinePrices.length > 0 &&

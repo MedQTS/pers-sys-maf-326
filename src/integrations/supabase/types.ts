@@ -1253,6 +1253,22 @@ export type Database = {
             }
             Returns: Json
           }
+      get_runner_operational_truth: {
+        Args: never
+        Returns: {
+          details: string
+          last_finished_at: string
+          last_started_at: string
+          last_status: string
+          last_trigger_source: string
+          schedule_authoritative: boolean
+          schedule_text: string
+          status_authoritative: boolean
+          step_key: string
+          step_label: string
+          telemetry_source: string
+        }[]
+      }
       pers_sys_normalize_venue: { Args: { v: string }; Returns: string }
       preview_leg_stake:
         | {

@@ -1308,7 +1308,7 @@ export type Database = {
       sys_leg_type: "H2H" | "LINE" | "TOTALS"
       sys_market: "H2H" | "LINE" | "TOTALS"
       sys_side: "HOME" | "AWAY" | "OVER" | "UNDER"
-      sys_signal_status: "READY" | "PENDING"
+      sys_signal_status: "READY" | "PENDING" | "BLOCKED" | "FAIL"
       sys_snapshot: "OPEN" | "T30" | "T10"
     }
     CompositeTypes: {
@@ -1441,7 +1441,7 @@ export const Constants = {
       sys_leg_type: ["H2H", "LINE", "TOTALS"],
       sys_market: ["H2H", "LINE", "TOTALS"],
       sys_side: ["HOME", "AWAY", "OVER", "UNDER"],
-      sys_signal_status: ["READY", "PENDING"],
+      sys_signal_status: ["READY", "PENDING", "BLOCKED", "FAIL"],
       sys_snapshot: ["OPEN", "T30", "T10"],
     },
   },

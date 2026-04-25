@@ -1785,15 +1785,55 @@ Deno.serve(async (req) => {
           }
         }
 
-        const recommendedUnits =
+        let recommendedUnits =
           Number.isFinite(Number(reason.recommended_units))
             ? Number(reason.recommended_units)
             : null;
-        const recommendedBankrollPct = toCanonicalBankrollPct({
+        let recommendedBankrollPct = toCanonicalBankrollPct({
           systemCode: system_code,
           recommendedUnits,
           stakingConfig: sys.staking_config ?? null,
         });
+
+        // Final policy guardrail normalization before any writes.
+        if (system_code === "SYS_6") {
+          if (recommendedUnits !== null) {
+            recommendedUnits = Math.min(recommendedUnits, 1.5);
+          }
+
+          if (recommendedBankrollPct !== null) {
+            recommendedBankrollPct = Math.min(recommendedBankrollPct, 0.015);
+          } else if (recommendedUnits !== null) {
+            recommendedBankrollPct = Number((Math.min(recommendedUnits, 1.5) / 100).toFixed(6));
+          }
+        }
+
+        if (system_code === "SYS_7") {
+          const oneU = resolveOneUPctForSystem(system_code, sys.staking_config ?? null);
+
+          if (oneU && oneU > 0) {
+            const maxUnitsByPct = Math.floor((0.03 / oneU) * 4) / 4;
+
+            if (recommendedUnits !== null) {
+              recommendedUnits = Math.min(recommendedUnits, maxUnitsByPct);
+            } else if (recommendedBankrollPct !== null) {
+              recommendedUnits = Math.min(
+                Math.floor((recommendedBankrollPct / oneU) * 4) / 4,
+                maxUnitsByPct,
+              );
+            }
+
+            if (recommendedUnits !== null) {
+              recommendedBankrollPct = Number((recommendedUnits * oneU).toFixed(6));
+            }
+          }
+
+          if (recommendedBankrollPct !== null) {
+            recommendedBankrollPct = Math.min(recommendedBankrollPct, 0.03);
+          }
+        }
+
+        reason.recommended_units = recommendedUnits;
         const stakingContractVersion = "v2_canonical_pct";
         reason.recommended_bankroll_pct = recommendedBankrollPct;
         reason.staking_contract_version = stakingContractVersion;

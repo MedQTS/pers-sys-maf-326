@@ -171,7 +171,7 @@ function assertSys8Config(sys: SystemV2Row) {
 
   const missing = required.filter(([, v]) => v === null).map(([k]) => k);
   if (missing.length > 0) {
-    throw new Error(`SYS_8 config missing required keys: ${missing.join(', ')}`);
+    throw new Error(`SYS_8 config missing required keys: ${missing.join(", ")}`);
   }
 }
 
@@ -425,7 +425,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     // systems v2
@@ -453,7 +453,7 @@ Deno.serve(async (req) => {
     });
 
     const dominatesByCode = new Set<string>(
-      ((pri || []) as any[]).filter((p) => !!p.dominates_match).map((p) => p.system_code)
+      ((pri || []) as any[]).filter((p) => !!p.dominates_match).map((p) => p.system_code),
     );
 
     // A system is in the side/line collision queue only if collision_rank is not null
@@ -568,7 +568,7 @@ Deno.serve(async (req) => {
 
     if (!totalRounds) {
       totalRounds = Math.max(
-        ...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0))
+        ...upcomingGames.map((g: any) => (typeof g.round === "number" ? g.round : 0)),
       );
     }
 
@@ -636,7 +636,7 @@ Deno.serve(async (req) => {
           reason_json: args.reason_json,
           evaluated_at: new Date().toISOString(),
         },
-        { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
+        { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" },
       );
       if (error) console.error("upsert error:", args.system_code, args.game_id, error.message);
       return !error;
@@ -695,7 +695,7 @@ Deno.serve(async (req) => {
             reason_json: args.reason_json,
             evaluated_at: new Date().toISOString(),
           },
-          { onConflict: "system_code,game_id,model_snapshot,execution_snapshot,audit_key" }
+          { onConflict: "system_code,game_id,model_snapshot,execution_snapshot,audit_key" },
         );
 
       if (error) {
@@ -724,7 +724,8 @@ Deno.serve(async (req) => {
           ? "T30"
           : modelSnap;
 
-      const allowCandidate = (sys.signal_mode ?? (sys.allow_candidate ? "ALLOW_CANDIDATE" : "HARD_FAIL")) === "ALLOW_CANDIDATE";
+      const allowCandidate = (sys.signal_mode ?? (sys.allow_candidate ? "ALLOW_CANDIDATE" : "HARD_FAIL")) ===
+        "ALLOW_CANDIDATE";
 
       for (const game of upcomingGames as any[]) {
         const g = game as GameRow;
@@ -786,7 +787,9 @@ Deno.serve(async (req) => {
           evaluation_version: sys.evaluation_version ?? null,
         };
 
-        const classifyFailStage = (code: string | undefined | null): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" => {
+        const classifyFailStage = (
+          code: string | undefined | null,
+        ): "GATE" | "DATA" | "MODEL" | "EXEC" | "OVERLAY" | "SYSTEM" => {
           const c = String(code || "");
           if (
             c.startsWith("missing_") ||
@@ -1001,7 +1004,7 @@ Deno.serve(async (req) => {
                       exec_best_book: null,
                       ref_books_observed: modelLine.ref_books_observed ?? [],
                       exec_books_observed: modelLine.exec_books_observed ?? [],
-                    })
+                    }),
                   );
                 }
               }
@@ -1068,7 +1071,7 @@ Deno.serve(async (req) => {
                       exec_best_book: null,
                       ref_books_observed: openLine.ref_books_observed ?? [],
                       exec_books_observed: openLine.exec_books_observed ?? [],
-                    })
+                    }),
                   );
 
                   reason.overlay = {
@@ -1101,134 +1104,134 @@ Deno.serve(async (req) => {
             }
 
             if (modelPass) {
-            // Home must be underdog at close/model snapshot
-            const homePrice = modelH2H.home_price;
-            const awayPrice = modelH2H.away_price;
+              // Home must be underdog at close/model snapshot
+              const homePrice = modelH2H.home_price;
+              const awayPrice = modelH2H.away_price;
 
-            if (!homePrice || !awayPrice) {
-              modelPass = false;
-              reason.fail = "missing_prices";
-            } else {
-              const homeIsDog = homePrice > awayPrice;
-              if (!homeIsDog) {
+              if (!homePrice || !awayPrice) {
                 modelPass = false;
-                reason.fail = "not_home_underdog";
+                reason.fail = "missing_prices";
               } else {
-                const favouritePrice = Math.min(homePrice, awayPrice);
-                reason.favourite_close_price = favouritePrice;
-
-                // Favourite close band 1.55–1.85
-                if (favouritePrice < 1.55 || favouritePrice > 1.85) {
+                const homeIsDog = homePrice > awayPrice;
+                if (!homeIsDog) {
                   modelPass = false;
-                  reason.fail = "fav_odds_band";
-                }
+                  reason.fail = "not_home_underdog";
+                } else {
+                  const favouritePrice = Math.min(homePrice, awayPrice);
+                  reason.favourite_close_price = favouritePrice;
 
-                // Favourite win streak ≥ 2
-                const favSide: Side = homePrice < awayPrice ? "HOME" : "AWAY";
-                const favTeamId = favSide === "HOME" ? g.home_team_id : g.away_team_id;
-
-                const favStreak = await getWinStreakBeforeGame({
-                  supabase,
-                  season,
-                  teamId: favTeamId,
-                  gameStartIso: g.start_time_aet,
-                });
-
-                reason.fav_win_streak = favStreak;
-                if (favStreak < 2) {
-                  modelPass = false;
-                  reason.fail = "fav_streak";
-                }
-
-                if (modelPass) {
-                  let stakeUnits = 1.0;
-                  reason.amplifiers = [];
-
-                  // Interstate boost
-                  const hs = (g.home_team as any)?.home_state ?? null;
-                  const as_ = (g.away_team as any)?.home_state ?? null;
-                  if (hs && as_ && hs !== as_) {
-                    stakeUnits += 0.5;
-                    reason.amplifiers.push("interstate");
+                  // Favourite close band 1.55–1.85
+                  if (favouritePrice < 1.55 || favouritePrice > 1.85) {
+                    modelPass = false;
+                    reason.fail = "fav_odds_band";
                   }
 
-                  // Tight favourite pocket 1.65–1.80
-                  if (favouritePrice >= 1.65 && favouritePrice <= 1.80) {
-                    stakeUnits += 0.5;
-                    reason.amplifiers.push("tight_favourite_pocket");
+                  // Favourite win streak ≥ 2
+                  const favSide: Side = homePrice < awayPrice ? "HOME" : "AWAY";
+                  const favTeamId = favSide === "HOME" ? g.home_team_id : g.away_team_id;
+
+                  const favStreak = await getWinStreakBeforeGame({
+                    supabase,
+                    season,
+                    teamId: favTeamId,
+                    gameStartIso: g.start_time_aet,
+                  });
+
+                  reason.fav_win_streak = favStreak;
+                  if (favStreak < 2) {
+                    modelPass = false;
+                    reason.fail = "fav_streak";
                   }
 
-                  // CLV momentum confirmation OPEN -> T10 (rules snapshot)
-                  const openHome = openH2H.home_price;
-                  const closeHome = modelH2H.home_price;
+                  if (modelPass) {
+                    let stakeUnits = 1.0;
+                    reason.amplifiers = [];
 
-                  if (openHome && closeHome) {
-                    const shorten = (openHome - closeHome) / openHome;
-                    reason.open_to_t10_shorten = Number(shorten.toFixed(4));
-
-                    if (shorten >= 0.08) {
-                      stakeUnits += 1.0;
-                      reason.amplifiers.push("clv_momentum_8_plus");
-                    } else if (shorten >= 0.06) {
+                    // Interstate boost
+                    const hs = (g.home_team as any)?.home_state ?? null;
+                    const as_ = (g.away_team as any)?.home_state ?? null;
+                    if (hs && as_ && hs !== as_) {
                       stakeUnits += 0.5;
-                      reason.amplifiers.push("clv_momentum_6_8");
+                      reason.amplifiers.push("interstate");
                     }
-                  }
 
-                  // Early market agreement OPEN -> T30
-                  const t30H2H = execH2H;
-                  const t30Home = t30H2H?.home_price ?? null;
-
-                  if (openHome && t30Home) {
-                    const earlyShorten = (openHome - t30Home) / openHome;
-                    reason.open_to_t30_shorten = Number(earlyShorten.toFixed(4));
-
-                    if (earlyShorten >= 0.06) {
+                    // Tight favourite pocket 1.65–1.80
+                    if (favouritePrice >= 1.65 && favouritePrice <= 1.80) {
                       stakeUnits += 0.5;
-                      reason.amplifiers.push("early_agreement_6_plus");
-                    } else if (earlyShorten >= 0.04) {
-                      stakeUnits += 0.25;
-                      reason.amplifiers.push("early_agreement_4_plus");
+                      reason.amplifiers.push("tight_favourite_pocket");
                     }
-                  }
 
-                  if (stakeUnits > 2.5) stakeUnits = 2.5;
-                  reason.recommended_units = stakeUnits;
+                    // CLV momentum confirmation OPEN -> T10 (rules snapshot)
+                    const openHome = openH2H.home_price;
+                    const closeHome = modelH2H.home_price;
 
-                  // Primary leg: HOME H2H
-                  reason.legs.push(
-                    buildLegH2H({
-                      system_code,
-                      snapshot_type: modelSnap,
-                      side: "HOME",
-                      ref_price: modelH2H.home_price ?? null,
-                      exec_best_price: null,
-                      exec_best_book: null,
-                      ref_books_observed: modelH2H.ref_books_observed ?? [],
-                      exec_books_observed: modelH2H.exec_books_observed ?? [],
-                    })
-                  );
+                    if (openHome && closeHome) {
+                      const shorten = (openHome - closeHome) / openHome;
+                      reason.open_to_t10_shorten = Number(shorten.toFixed(4));
 
-                  // Overlay leg metadata only; actual signal engine remains single-leg for now.
-                  // Record overlay eligibility in reason_json for audit/reporting.
-                  if (openLine && modelLine) {
-                    const openHomeLine = openLine.home_line;
-                    const modelHomeLine = modelLine.home_line;
+                      if (shorten >= 0.08) {
+                        stakeUnits += 1.0;
+                        reason.amplifiers.push("clv_momentum_8_plus");
+                      } else if (shorten >= 0.06) {
+                        stakeUnits += 0.5;
+                        reason.amplifiers.push("clv_momentum_6_8");
+                      }
+                    }
 
-                    if (openHomeLine !== null && modelHomeLine !== null) {
-                      const overlayClv = Number((modelHomeLine - openHomeLine).toFixed(2));
-                      reason.overlay = {
-                        type: "LINE",
-                        enabled: overlayClv > 0,
+                    // Early market agreement OPEN -> T30
+                    const t30H2H = execH2H;
+                    const t30Home = t30H2H?.home_price ?? null;
+
+                    if (openHome && t30Home) {
+                      const earlyShorten = (openHome - t30Home) / openHome;
+                      reason.open_to_t30_shorten = Number(earlyShorten.toFixed(4));
+
+                      if (earlyShorten >= 0.06) {
+                        stakeUnits += 0.5;
+                        reason.amplifiers.push("early_agreement_6_plus");
+                      } else if (earlyShorten >= 0.04) {
+                        stakeUnits += 0.25;
+                        reason.amplifiers.push("early_agreement_4_plus");
+                      }
+                    }
+
+                    if (stakeUnits > 2.5) stakeUnits = 2.5;
+                    reason.recommended_units = stakeUnits;
+
+                    // Primary leg: HOME H2H
+                    reason.legs.push(
+                      buildLegH2H({
+                        system_code,
+                        snapshot_type: modelSnap,
                         side: "HOME",
-                        clv_points: overlayClv,
-                        clv_min: 0,
-                      };
+                        ref_price: modelH2H.home_price ?? null,
+                        exec_best_price: null,
+                        exec_best_book: null,
+                        ref_books_observed: modelH2H.ref_books_observed ?? [],
+                        exec_books_observed: modelH2H.exec_books_observed ?? [],
+                      }),
+                    );
+
+                    // Overlay leg metadata only; actual signal engine remains single-leg for now.
+                    // Record overlay eligibility in reason_json for audit/reporting.
+                    if (openLine && modelLine) {
+                      const openHomeLine = openLine.home_line;
+                      const modelHomeLine = modelLine.home_line;
+
+                      if (openHomeLine !== null && modelHomeLine !== null) {
+                        const overlayClv = Number((modelHomeLine - openHomeLine).toFixed(2));
+                        reason.overlay = {
+                          type: "LINE",
+                          enabled: overlayClv > 0,
+                          side: "HOME",
+                          clv_points: overlayClv,
+                          clv_min: 0,
+                        };
+                      }
                     }
                   }
                 }
               }
-            }
             }
           }
         }
@@ -1280,7 +1283,7 @@ Deno.serve(async (req) => {
                   exec_best_book: null,
                   ref_books_observed: modelLine.ref_books_observed ?? [],
                   exec_books_observed: modelLine.exec_books_observed ?? [],
-                })
+                }),
               );
             }
           }
@@ -1376,7 +1379,7 @@ Deno.serve(async (req) => {
                   exec_best_book: null,
                   ref_books_observed: modelLine.ref_books_observed ?? [],
                   exec_books_observed: modelLine.exec_books_observed ?? [],
-                })
+                }),
               );
             }
           }
@@ -1411,10 +1414,10 @@ Deno.serve(async (req) => {
               }
 
               if (modelPass) {
-                let stakePct = 1.5;
+                let stakePct = 0.75;
 
-                if (clv >= 0.03) stakePct = 2.0;
-                if (clv >= 0.06) stakePct = 2.5;
+                if (clv >= 0.03) stakePct = 1.0;
+                if (clv >= 0.06) stakePct = 1.25;
 
                 reason.tier = stakePct;
 
@@ -1426,7 +1429,7 @@ Deno.serve(async (req) => {
                   const dogLine = modelLine.away_line;
 
                   if (dogLine !== null && dogLine >= 18) {
-                    stakePct += 0.25;
+                    stakePct += 0.125;
                     reason.amplifiers.push("large_spread");
                   }
                 }
@@ -1439,13 +1442,13 @@ Deno.serve(async (req) => {
                     const t30Clv = execDogPrice - openDogPrice;
 
                     if (t30Clv >= 0.04) {
-                      stakePct += 0.25;
+                      stakePct += 0.125;
                       reason.amplifiers.push("early_agreement");
                     }
                   }
                 }
 
-                if (stakePct > 2.5) stakePct = 2.5;
+                if (stakePct > 1.5) stakePct = 1.5;
 
                 reason.recommended_units = stakePct;
 
@@ -1459,7 +1462,7 @@ Deno.serve(async (req) => {
                     exec_best_book: null,
                     ref_books_observed: modelH2H.ref_books_observed ?? [],
                     exec_books_observed: modelH2H.exec_books_observed ?? [],
-                  })
+                  }),
                 );
               }
             }
@@ -1529,7 +1532,7 @@ Deno.serve(async (req) => {
                 }
 
                 const lost_last_1 = outcomes.length >= 1 && outcomes[0] === "LOSS";
-                const lost_2_of_last_3 = outcomes.filter(o => o === "LOSS").length >= 2;
+                const lost_2_of_last_3 = outcomes.filter((o) => o === "LOSS").length >= 2;
                 const lost_2_straight = outcomes.length >= 2 && outcomes[0] === "LOSS" && outcomes[1] === "LOSS";
 
                 reason.lost_last_1 = lost_last_1;
@@ -1541,13 +1544,13 @@ Deno.serve(async (req) => {
 
                 if (lost_2_straight) {
                   tier = "tier3";
-                  units = 3.0;
+                  units = 2.0;
                 } else if (lost_2_of_last_3) {
                   tier = "tier2";
-                  units = 2.25;
+                  units = 1.5;
                 } else {
                   tier = "tier1";
-                  units = 1.5;
+                  units = 1.0;
                 }
 
                 reason.tier = tier;
@@ -1562,10 +1565,10 @@ Deno.serve(async (req) => {
                   reason.open_to_t10_shorten = Number(shorten.toFixed(4));
 
                   if (shorten >= 0.08) {
-                    units += 1.0;
+                    units += 0.5;
                     reason.amplifiers.push("clv_momentum_8_plus");
                   } else if (shorten >= 0.06) {
-                    units += 0.5;
+                    units += 0.25;
                     reason.amplifiers.push("clv_momentum_6_8");
                   }
 
@@ -1577,10 +1580,10 @@ Deno.serve(async (req) => {
                     reason.open_to_t30_shorten = Number(earlyShorten.toFixed(4));
 
                     if (earlyShorten >= 0.05) {
-                      units += 0.5;
+                      units += 0.25;
                       reason.amplifiers.push("early_agreement_5_plus");
                     } else if (earlyShorten >= 0.03) {
-                      units += 0.25;
+                      units += 0.125;
                       reason.amplifiers.push("early_agreement_3_plus");
                     }
                   }
@@ -1593,7 +1596,7 @@ Deno.serve(async (req) => {
                 }
 
                 // Cap
-                if (units > 4.0) units = 4.0;
+                if (units > 2.5) units = 2.5;
                 reason.recommended_units = units;
 
                 reason.legs.push(
@@ -1606,7 +1609,7 @@ Deno.serve(async (req) => {
                     exec_best_book: null,
                     ref_books_observed: modelH2H.ref_books_observed ?? [],
                     exec_books_observed: modelH2H.exec_books_observed ?? [],
-                  })
+                  }),
                 );
               }
             }
@@ -1712,7 +1715,7 @@ Deno.serve(async (req) => {
                     exec_best_book: null,
                     ref_books_observed: modelTotals.ref_books_observed ?? [],
                     exec_books_observed: modelTotals.exec_books_observed ?? [],
-                  })
+                  }),
                 );
               }
             }
@@ -1776,7 +1779,7 @@ Deno.serve(async (req) => {
                   exec_best_book: null,
                   ref_books_observed: modelTotals.ref_books_observed ?? [],
                   exec_books_observed: modelTotals.exec_books_observed ?? [],
-                })
+                }),
               );
             }
           }
@@ -1840,112 +1843,43 @@ Deno.serve(async (req) => {
         let execBestBook: string | null = null;
         let lineAtBet: number | null = primaryLeg.line_at_bet ?? null;
 
-        if (execHas) {
-          signalStatus = "READY";
-          if (primaryMarket === "H2H") {
-            const side = primaryLeg.side as Side;
-            execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_price : execSnapRow!.exec_best_away_price;
-            execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_book : execSnapRow!.exec_best_away_book;
-          } else if (primaryMarket === "TOTALS") {
-            const side = primaryLeg.side as Side;
-            if (side === "OVER") {
-              execBestPrice = execSnapRow!.exec_best_over_price;
-              execBestBook = execSnapRow!.exec_best_over_book;
+        if (primaryMarket === "H2H") {
+          if (execH2H) {
+            if (primaryLeg.side === "HOME") {
+              execBestPrice = execH2H.exec_best_home_price ?? null;
+              execBestBook = execH2H.exec_best_home_book ?? null;
             } else {
-              execBestPrice = execSnapRow!.exec_best_under_price;
-              execBestBook = execSnapRow!.exec_best_under_book;
-            }
-            if (execSnapRow!.exec_best_total_line !== null) {
-              lineAtBet = execSnapRow!.exec_best_total_line;
-            }
-          } else {
-            const side = primaryLeg.side as Side;
-            execBestPrice = side === "HOME" ? execSnapRow!.exec_best_home_line_price : execSnapRow!.exec_best_away_line_price;
-            execBestBook = side === "HOME" ? execSnapRow!.exec_best_home_line_book : execSnapRow!.exec_best_away_line_book;
-            if (execSnapRow) {
-              const execLineVal = side === "HOME" ? execSnapRow.exec_best_home_line : execSnapRow.exec_best_away_line;
-              if (execLineVal !== null) lineAtBet = execLineVal;
+              execBestPrice = execH2H.exec_best_away_price ?? null;
+              execBestBook = execH2H.exec_best_away_book ?? null;
             }
           }
-        } else if (!allowCandidate) {
-          await upsertAuditV2({
-            system_code,
-            game_id: g.id,
-            season,
-            round: round ?? null,
-            model_snapshot: modelSnap,
-            execution_snapshot: execSnap,
-            model_market: sys.primary_market ?? primaryMarket,
-            execution_market: primaryMarket,
-            audit_status: "FAIL",
-            fail_stage: "EXEC",
-            fail_code: "missing_execution_snapshot",
-            leg_type: primaryMarket,
-            side: primaryLeg.side as Side,
-            line_at_bet: lineAtBet,
-            ref_price: primaryLeg.ref_price ?? null,
-            exec_best_price: null,
-            exec_best_book: null,
-            recommended_units: reason.recommended_units ?? null,
-            recommended_bankroll_pct: recommendedBankrollPct,
-            staking_contract_version: stakingContractVersion,
-            reason_json: reason,
-          });
-          continue;
-        }
-
-        // dominance: only apply side/line collision blocking to systems in the collision queue
-        const currentInQueue = isInCollisionQueue(system_code, primaryMarket);
-        const blocker = dominatedByGame[g.id];
-        if (blocker && blocker !== system_code && currentInQueue) {
-          signalStatus = "BLOCKED";
-          reason.fail = `blocked_by_${blocker}`;
-          reason.blocked_by = blocker;
-          const blockerPri = priByCode.get(blocker);
-          if (blockerPri?.collision_rank != null) {
-            reason.blocked_by_collision_rank = blockerPri.collision_rank;
+        } else if (primaryMarket === "LINE") {
+          if (execLine) {
+            if (primaryLeg.side === "HOME") {
+              execBestPrice = execLine.exec_best_home_line_price ?? null;
+              execBestBook = execLine.exec_best_home_line_book ?? null;
+              lineAtBet = execLine.exec_best_home_line ?? lineAtBet;
+            } else {
+              execBestPrice = execLine.exec_best_away_line_price ?? null;
+              execBestBook = execLine.exec_best_away_line_book ?? null;
+              lineAtBet = execLine.exec_best_away_line ?? lineAtBet;
+            }
           }
-
-          // execution fields should not be actionable when blocked
-          execBestBook = null;
-          execBestPrice = null;
+        } else if (primaryMarket === "TOTALS") {
+          if (execTotals) {
+            if (primaryLeg.side === "OVER") {
+              execBestPrice = execTotals.exec_best_over_price ?? null;
+              execBestBook = execTotals.exec_best_over_book ?? null;
+            } else {
+              execBestPrice = execTotals.exec_best_under_price ?? null;
+              execBestBook = execTotals.exec_best_under_book ?? null;
+            }
+            lineAtBet = execTotals.exec_best_total_line ?? lineAtBet;
+          }
         }
 
-        // Enrich reason_json (keep it lean — typed columns hold the primary data)
-        reason.status = signalStatus;
-
-        // Structural-vs-variable rule:
-        // If this row would only be PENDING because the unmet condition is structural,
-        // keep it in audit only and do not surface it as a signal row.
-        if (signalStatus === "PENDING" && isStructuralFail(reason.fail)) {
-          await upsertAuditV2({
-            system_code,
-            game_id: g.id,
-            season,
-            round: round ?? null,
-            model_snapshot: modelSnap,
-            execution_snapshot: execSnap,
-            model_market: sys.primary_market ?? primaryMarket,
-            execution_market: primaryMarket,
-            audit_status: "FAIL",
-            fail_stage: classifyFailStage(reason.fail),
-            fail_code: reason.fail ?? "structural_pending_blocked",
-            leg_type: primaryMarket,
-            side: primaryLeg.side as Side,
-            line_at_bet: lineAtBet,
-            ref_price: primaryLeg.ref_price ?? null,
-            exec_best_price: null,
-            exec_best_book: null,
-            recommended_units: reason.recommended_units ?? null,
-            recommended_bankroll_pct: recommendedBankrollPct,
-            staking_contract_version: stakingContractVersion,
-            reason_json: {
-              ...reason,
-              status: "FAIL",
-              fail: reason.fail ?? "structural_pending_blocked",
-            },
-          });
-          continue;
+        if (execHas && execBestPrice) {
+          signalStatus = "READY";
         }
 
         await upsertAuditV2({
@@ -1955,350 +1889,61 @@ Deno.serve(async (req) => {
           round: round ?? null,
           model_snapshot: modelSnap,
           execution_snapshot: execSnap,
-          model_market: sys.primary_market ?? primaryMarket,
+          model_market: (sys.primary_market ?? primaryMarket) as MarketType,
           execution_market: primaryMarket,
-          audit_status: signalStatus as "READY" | "PENDING" | "BLOCKED",
-          fail_stage: signalStatus === "BLOCKED" ? "SYSTEM" : signalStatus === "PENDING" ? "EXEC" : null,
-          fail_code:
-            signalStatus === "BLOCKED"
-              ? String(reason.fail ?? "blocked")
-              : signalStatus === "PENDING"
-              ? String(reason.fail ?? "awaiting_execution_snapshot")
-              : null,
+          audit_status: signalStatus === "READY" ? "READY" : "PENDING",
+          fail_stage: signalStatus === "READY" ? null : "EXEC",
+          fail_code: signalStatus === "READY" ? null : "missing_execution_snapshot",
           leg_type: primaryMarket,
-          side: primaryLeg.side as Side,
+          side: primaryLeg.side,
           line_at_bet: lineAtBet,
           ref_price: primaryLeg.ref_price ?? null,
           exec_best_price: execBestPrice,
           exec_best_book: execBestBook,
-          recommended_units: reason.recommended_units ?? null,
+          recommended_units: recommendedUnits,
           recommended_bankroll_pct: recommendedBankrollPct,
           staking_contract_version: stakingContractVersion,
-          reason_json: reason,
+          reason_json: {
+            ...reason,
+            status: signalStatus,
+          },
         });
 
-        const wrote = await upsertSignalV2({
+        if (signalStatus !== "READY") continue;
+
+        const signalOk = await upsertSignalV2({
           system_code,
           game_id: g.id,
           model_snapshot: modelSnap,
           execution_snapshot: execSnap,
-          model_market: sys.primary_market ?? primaryMarket,
+          model_market: (sys.primary_market ?? primaryMarket) as MarketType,
           execution_market: primaryMarket,
-          pass: signalStatus !== "BLOCKED",
+          pass: true,
           signal_status: signalStatus,
           leg_type: primaryMarket,
-          side: primaryLeg.side as Side,
+          side: primaryLeg.side,
           line_at_bet: lineAtBet,
           ref_price: primaryLeg.ref_price ?? null,
           exec_best_price: execBestPrice,
           exec_best_book: execBestBook,
-          recommended_units: reason.recommended_units ?? null,
+          recommended_units: recommendedUnits,
           recommended_bankroll_pct: recommendedBankrollPct,
           staking_contract_version: stakingContractVersion,
-          reason_json: reason,
+          reason_json: {
+            ...reason,
+            status: signalStatus,
+          },
         });
 
-        if (wrote) signalsCreated++;
-
-        // latch dominance for this game if applicable (only for collision-queue systems)
-        if (signalStatus === "READY" && dominatesByCode.has(system_code) && !dominatedByGame[g.id] && isInCollisionQueue(system_code, primaryMarket)) {
-          dominatedByGame[g.id] = system_code;
-        }
-
-        // --- Overlay child signal (SYS_2: fade-side H2H at T30 if CLV > threshold) ---
-        if (signalStatus !== "BLOCKED")
-          try {
-            const overlayEnabled = !!reason?.overlay?.enabled;
-            const primaryReady = signalStatus === "READY";
-
-            // Only SYS_2 has the locked overlay rule:
-            // "H2H overlay on fade side + CLV(open->T30) > 0.03"
-            if (overlayEnabled && primaryReady && system_code === "SYS_2") {
-              const overlayExecSnap: "T30" = "T30";
-
-              // Overlay side is the fade side, derived from the parent signal's reason metadata.
-              const overlaySide: Side =
-                reason?.overlay?.side === "HOME" ? "HOME" : "AWAY";
-
-              // Need OPEN + T30 H2H snapshots to evaluate CLV and to fill exec_best_*
-              const openSnap = openH2H;
-              const t30Snap = pickSnap(gameSnaps, overlayExecSnap, "H2H");
-
-              // If we can't evaluate yet, do not create/keep a misleading overlay row.
-              if (!openSnap || !t30Snap) {
-                // Upsert a watch-state placeholder so the UI shows a potential upcoming overlay
-                const placeholderReason: Record<string, any> = {
-                  ...reason,
-                  status: "PENDING",
-                  staking_contract_version: stakingContractVersion,
-                  execution_snapshot: overlayExecSnap,
-                  overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
-                  overlay_child: {
-                    required_execution_snapshot: overlayExecSnap,
-                    market: "H2H",
-                    side: overlaySide,
-                  },
-                  fail: "awaiting_t30_snapshot",
-                };
-
-                // Only show overlay watch rows when the remaining unmet condition is time/market dependent.
-                  // If the setup is structurally impossible, audit it but do not surface a pending row.
-                  if (isStructuralFail(reason.fail)) {
-                    await upsertAuditV2({
-                      system_code,
-                      game_id: g.id,
-                      season,
-                      round: round ?? null,
-                      model_snapshot: modelSnap,
-                      execution_snapshot: overlayExecSnap,
-                      model_market: "H2H",
-                      execution_market: "H2H",
-                      audit_status: "FAIL",
-                      fail_stage: classifyFailStage(reason.fail),
-                      fail_code: reason.fail ?? "structural_overlay_blocked",
-                      leg_type: "H2H",
-                      side: overlaySide,
-                      line_at_bet: null,
-                      ref_price: null,
-                      exec_best_price: null,
-                      exec_best_book: null,
-                      recommended_units: null,
-                      recommended_bankroll_pct: null,
-                      staking_contract_version: stakingContractVersion,
-                      reason_json: {
-                        ...placeholderReason,
-                        status: "FAIL",
-                        fail: reason.fail ?? "structural_overlay_blocked",
-                      },
-                    });
-                    continue;
-                  }
-
-                  await supabase.from("pers_sys_signals_v2").upsert(
-                  {
-                    system_code,
-                    game_id: g.id,
-                    model_snapshot: modelSnap,
-                    execution_snapshot: overlayExecSnap,
-                    model_market: "H2H",
-                    execution_market: "H2H",
-                    pass: false,
-                    signal_status: "PENDING",
-                    parent_signal_id: null,
-                    leg_type: "H2H",
-                    side: overlaySide,
-                    line_at_bet: null,
-                    ref_price: null,
-                    exec_best_price: null,
-                    exec_best_book: null,
-                    recommended_units: null,
-                    recommended_bankroll_pct: null,
-                    staking_contract_version: stakingContractVersion,
-                    reason_json: placeholderReason,
-                    evaluated_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  },
-                  { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
-                );
-
-                await upsertAuditV2({
-                    system_code,
-                    game_id: g.id,
-                    season,
-                    round: round ?? null,
-                    model_snapshot: modelSnap,
-                    execution_snapshot: overlayExecSnap,
-                    model_market: "H2H",
-                    execution_market: "H2H",
-                    audit_status: "PENDING",
-                    fail_stage: "OVERLAY",
-                    fail_code: "awaiting_t30_snapshot",
-                    leg_type: "H2H",
-                    side: overlaySide,
-                    line_at_bet: null,
-                    ref_price: null,
-                    exec_best_price: null,
-                    exec_best_book: null,
-                    recommended_units: null,
-                    recommended_bankroll_pct: null,
-                    staking_contract_version: stakingContractVersion,
-                    reason_json: placeholderReason,
-                  });
-              } else {
-                const openOverlayPrice =
-                  overlaySide === "HOME" ? openSnap.home_price : openSnap.away_price;
-                const t30OverlayPrice =
-                  overlaySide === "HOME" ? t30Snap.home_price : t30Snap.away_price;
-
-                // Compute CLV(open->T30) for fade side; must be positive and exceed threshold.
-                const clvMin = 0.03;
-                let clvOk = false;
-                let clvRel: number | null = null;
-
-                if (openOverlayPrice && t30OverlayPrice) {
-                  clvRel = relCLV(openOverlayPrice, t30OverlayPrice);
-                  clvOk = clvRel > clvMin;
-                }
-
-                // If the overlay condition does not pass, remove any prior overlay row.
-                if (!clvOk) {
-                  await upsertAuditV2({
-                    system_code,
-                    game_id: g.id,
-                    season,
-                    round: round ?? null,
-                    model_snapshot: modelSnap,
-                    execution_snapshot: overlayExecSnap,
-                    model_market: "H2H",
-                    execution_market: "H2H",
-                    audit_status: "FAIL",
-                    fail_stage: "OVERLAY",
-                    fail_code: "overlay_clv_fail",
-                    leg_type: "H2H",
-                    side: overlaySide,
-                    line_at_bet: null,
-                    ref_price: null,
-                    exec_best_price: null,
-                    exec_best_book: null,
-                    recommended_units: null,
-                    recommended_bankroll_pct: null,
-                    staking_contract_version: stakingContractVersion,
-                    reason_json: {
-                      ...reason,
-                      execution_snapshot: overlayExecSnap,
-                      overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
-                      overlay_child: {
-                        required_execution_snapshot: overlayExecSnap,
-                        market: "H2H",
-                        side: overlaySide,
-                      },
-                      fail: "overlay_clv_fail",
-                    },
-                  });
-
-                  await supabase
-                    .from("pers_sys_signals_v2")
-                    .delete()
-                    .eq("system_code", system_code)
-                    .eq("game_id", g.id)
-                    .eq("execution_snapshot", overlayExecSnap)
-                    .eq("leg_type", "H2H");
-                } else {
-                  // We have the condition satisfied. Now decide READY vs PENDING based on market data at T30.
-                  const t30Has = hasMarketData(t30Snap, "H2H");
-
-                  const overlayStatus: Status = t30Has ? "READY" : "PENDING";
-
-                  // Exec best fields are drawn from the T30 snapshot row.
-                  const overlayExecBestPrice = t30Has
-                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_price : t30Snap.exec_best_away_price)
-                    : null;
-                  const overlayExecBestBook = t30Has
-                    ? (overlaySide === "HOME" ? t30Snap.exec_best_home_book : t30Snap.exec_best_away_book)
-                    : null;
-
-                  const overlayReason: Record<string, any> = {
-                    ...reason,
-                    // Align metadata to what we're actually doing for overlay
-                    status: overlayStatus,
-                    execution_snapshot: overlayExecSnap,
-                    overlay: { type: "H2H", enabled: true, depends_on: overlayExecSnap },
-                    overlay_child: {
-                      required_execution_snapshot: overlayExecSnap,
-                      market: "H2H",
-                      side: overlaySide,
-                      clv_rel: clvRel !== null ? Number(clvRel.toFixed(4)) : null,
-                      clv_min: clvMin,
-                    },
-                  };
-
-                  if (overlayStatus === "PENDING") {
-                    overlayReason.fail = "waiting_overlay_snapshot";
-                  } else {
-                    // Ensure we don't leave stale fail markers once READY
-                    delete overlayReason.fail;
-                    overlayReason.recommended_units = 0.4;
-                  }
-
-                  overlayReason.recommended_bankroll_pct =
-                    overlayStatus === "READY" ? 0.004 : null;
-                  overlayReason.staking_contract_version = stakingContractVersion;
-
-                  // Upsert overlay row using the same conflict key pattern (system_code,game_id,execution_snapshot,leg_type,side)
-                  await supabase.from("pers_sys_signals_v2").upsert(
-                    {
-                      system_code,
-                      game_id: g.id,
-                      model_snapshot: modelSnap,
-                      execution_snapshot: overlayExecSnap,
-                      model_market: "H2H",
-                      execution_market: "H2H",
-                      pass: overlayStatus === "READY",
-                      signal_status: overlayStatus,
-                      parent_signal_id: null,
-                      leg_type: "H2H",
-                      side: overlaySide,
-                      line_at_bet: null,
-                      ref_price: null,
-                      exec_best_price: overlayExecBestPrice,
-                      exec_best_book: overlayExecBestBook,
-                      recommended_units: overlayStatus === "READY" ? 0.4 : null,
-                      recommended_bankroll_pct: overlayStatus === "READY" ? 0.004 : null,
-                      staking_contract_version: stakingContractVersion,
-                      reason_json: overlayReason,
-                      evaluated_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                    },
-                    { onConflict: "system_code,game_id,execution_snapshot,leg_type,side" }
-                  );
-
-                  await upsertAuditV2({
-                    system_code,
-                    game_id: g.id,
-                    season,
-                    round: round ?? null,
-                    model_snapshot: modelSnap,
-                    execution_snapshot: overlayExecSnap,
-                    model_market: "H2H",
-                    execution_market: "H2H",
-                    audit_status: overlayStatus === "READY" ? "READY" : "PENDING",
-                    fail_stage: overlayStatus === "READY" ? null : "OVERLAY",
-                    fail_code: overlayStatus === "READY" ? null : String(overlayReason.fail ?? "waiting_overlay_snapshot"),
-                    leg_type: "H2H",
-                    side: overlaySide,
-                    line_at_bet: null,
-                    ref_price: null,
-                    exec_best_price: overlayExecBestPrice,
-                    exec_best_book: overlayExecBestBook,
-                    recommended_units: overlayStatus === "READY" ? 0.4 : null,
-                    recommended_bankroll_pct: overlayStatus === "READY" ? 0.004 : null,
-                    staking_contract_version: stakingContractVersion,
-                    reason_json: overlayReason,
-                  });
-                }
-              }
-            }
-          } catch (e) {
-            console.warn("overlay_signal_write_failed", e);
-          }
+        if (signalOk) signalsCreated += 1;
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        season,
-        game_id: onlyGameId,
-        horizon_days: horizonDays,
-        window: { startIso, endIso },
-        signals_created: signalsCreated,
-        evaluator: "v2",
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ ok: true, season, signals_created: signalsCreated }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+    return new Response(JSON.stringify({ ok: false, error: String(err?.message ?? err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -1,5 +1,5 @@
 ﻿REPO FILE STRUCTURE
-Generated: 2026-04-05 22:48:25
+Generated: 2026-04-23 14:29:07
 Project: AFL Betting System
 Root: C:\AI\Repos\pers-sys-maf-326
 
@@ -15,9 +15,23 @@ Root: C:\AI\Repos\pers-sys-maf-326
 [FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Canonical Architecture.md
 [FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Delivery Gates.md
 [FILE] Architecture\_sync-backups\20260402-163612\Pers Sys — Project Snapshot.md
+[DIR ] Architecture\_sync-backups\20260405-231842
+[FILE] Architecture\_sync-backups\20260405-231842\Pers Sys — Canonical Architecture.md
+[FILE] Architecture\_sync-backups\20260405-231842\Pers Sys — Delivery Gates.md
+[FILE] Architecture\_sync-backups\20260405-231842\Pers Sys — Project Snapshot.md
+[DIR ] Architecture\_sync-backups\20260406-005410
+[FILE] Architecture\_sync-backups\20260406-005410\Pers Sys — Canonical Architecture.md
+[FILE] Architecture\_sync-backups\20260406-005410\Pers Sys — Delivery Gates.md
+[FILE] Architecture\_sync-backups\20260406-005410\Pers Sys — Project Snapshot.md
+[DIR ] Architecture\_sync-backups\20260423-142852
+[FILE] Architecture\_sync-backups\20260423-142852\Pers Sys — Canonical Architecture.md
+[FILE] Architecture\_sync-backups\20260423-142852\Pers Sys — Delivery Gates.md
+[FILE] Architecture\_sync-backups\20260423-142852\Pers Sys — Project Snapshot.md
+[FILE] Architecture\_sync-backups\20260423-142852\Pers Sys — Weather Scope.md
 [FILE] Architecture\Pers Sys — Canonical Architecture.md
 [FILE] Architecture\Pers Sys — Delivery Gates.md
 [FILE] Architecture\Pers Sys — Project Snapshot.md
+[FILE] Architecture\Pers Sys — Weather Scope.md
 [FILE] Architecture\test123
 [FILE] bun.lock
 [FILE] bun.lockb
@@ -37,6 +51,8 @@ Root: C:\AI\Repos\pers-sys-maf-326
 [FILE] public\robots.txt
 [FILE] README.md
 [FILE] repo-file-structure.txt
+[FILE] RepoPersSys_diagnostic_output.txt
+[FILE] repo-summary-source-pack.txt
 [DIR ] src
 [FILE] src\App.css
 [FILE] src\App.tsx
@@ -193,6 +209,8 @@ Root: C:\AI\Repos\pers-sys-maf-326
 [FILE] supabase\migrations\20260309113600_normalize_systems_v2_config_keys.sql
 [FILE] supabase\migrations\20260330001000_backfill_one_u_calibration_keys.sql
 [FILE] supabase\migrations\20260330012000_add_runner_operational_truth_rpc.sql
+[FILE] supabase\migrations\20260405134329_033f7e3f-9a3e-42dd-8070-8a11570378ab.sql
+[FILE] supabase\migrations\20260405135350_7553995b-bf2e-4a9d-9bf3-bd0b0bc44d40.sql
 [FILE] tailwind.config.ts
 [FILE] tsconfig.app.json
 [FILE] tsconfig.json

@@ -77,8 +77,9 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
       return new Response(
         JSON.stringify({ ok: false, error: "missing_supabase_env" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -204,7 +205,7 @@ Deno.serve(async (req) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${serviceRoleKey}`,
+          Authorization: `Bearer ${anonKey}`,
         },
         body: JSON.stringify(requestBody),
       });

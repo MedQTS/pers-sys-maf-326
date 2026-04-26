@@ -8,7 +8,7 @@ const corsHeaders = {
 
 async function callEdgeFunction(args: {
   supabaseUrl: string;
-  serviceRoleKey: string;
+  anonKey: string;
   functionName: string;
   payload: Record<string, unknown>;
 }) {
@@ -16,7 +16,7 @@ async function callEdgeFunction(args: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${args.serviceRoleKey}`,
+      Authorization: `Bearer ${args.anonKey}`,
     },
     body: JSON.stringify(args.payload),
   });
@@ -49,8 +49,9 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
       return new Response(
         JSON.stringify({ ok: false, error: "missing_supabase_env" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -115,7 +116,7 @@ Deno.serve(async (req) => {
 
     const step1 = await callEdgeFunction({
       supabaseUrl,
-      serviceRoleKey,
+      anonKey,
       functionName: "pers-sys-pull-odds-snapshot",
       payload: { snapshot_type: "OPEN" },
     });
@@ -148,7 +149,7 @@ Deno.serve(async (req) => {
 
     const step2 = await callEdgeFunction({
       supabaseUrl,
-      serviceRoleKey,
+      anonKey,
       functionName: "pers-sys-evaluate-systems-v2",
       payload: { season },
     });

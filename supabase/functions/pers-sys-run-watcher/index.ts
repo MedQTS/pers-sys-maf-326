@@ -18,7 +18,7 @@ type StepResult = {
 
 async function callEdgeFunction(args: {
   supabaseUrl: string;
-  serviceRoleKey: string;
+  anonKey: string;
   functionName: string;
   payload: Record<string, unknown>;
 }): Promise<StepResult> {
@@ -26,7 +26,7 @@ async function callEdgeFunction(args: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${args.serviceRoleKey}`,
+      Authorization: `Bearer ${args.anonKey}`,
     },
     body: JSON.stringify(args.payload),
   });
@@ -93,8 +93,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "missing_supabase_env" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     let scheduledStartIso: string | null = null;
@@ -194,7 +203,7 @@ Deno.serve(async (req) => {
     for (const step of steps) {
       const result = await callEdgeFunction({
         supabaseUrl,
-        serviceRoleKey,
+        anonKey,
         functionName: step.functionName,
         payload: step.payload,
       });

@@ -227,11 +227,34 @@ function findMatchingLoggedBet(signal: SignalRow, bets: BetRow[]): BetRow | null
   return bets.find((bet) => betMatchesLogged(signal, bet)) ?? null;
 }
 
+function backedSelection(signal: SignalRow, game: GameRow | null): string {
+  const market = String(signal.leg_type ?? "").toUpperCase();
+  const side = String(signal.side ?? "").toUpperCase();
+  const home = game?.home_team?.canonical_name ?? null;
+  const away = game?.away_team?.canonical_name ?? null;
+  const lineStr = signal.line_at_bet == null ? "" : ` ${fmtLine(signal.line_at_bet)}`;
+
+  if (market === "H2H") {
+    if (side === "HOME") return `Back ${home ?? "HOME"}`;
+    if (side === "AWAY") return `Back ${away ?? "AWAY"}`;
+  }
+  if (market === "LINE") {
+    if (side === "HOME") return `Back ${home ?? "HOME"}${lineStr}`;
+    if (side === "AWAY") return `Back ${away ?? "AWAY"}${lineStr}`;
+  }
+  if (market === "TOTALS") {
+    if (side === "OVER") return `Back OVER${lineStr}`;
+    if (side === "UNDER") return `Back UNDER${lineStr}`;
+  }
+  return `Back ${side || "?"}`;
+}
+
 function buildTextLine(row: CandidateRow): string {
   const signal = row.signal;
   const game = row.game;
   const preview = row.preview;
 
+  const back = backedSelection(signal, game);
   const gameText = gameLabel(game);
   const venue = game?.venue ?? "—";
   const market = String(signal.leg_type ?? "?").toUpperCase();
@@ -242,10 +265,11 @@ function buildTextLine(row: CandidateRow): string {
   const book = preview.book ?? signal.exec_best_book ?? "—";
   const rule = ruleSummary(signal);
 
-  return `[${row.statusLabel}] ${gameText} | ${venue} | ${signal.system_code} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule}`;
+  return `[${row.statusLabel}] ${back} | ${gameText} | ${venue} | ${signal.system_code} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule}`;
 }
 
 function buildAcceptedTextLine(signal: SignalRow, game: GameRow | null, bet: BetRow | null): string {
+  const back = backedSelection(signal, game);
   const gameText = gameLabel(game);
   const venue = game?.venue ?? "—";
   const market = String(signal.leg_type ?? "?").toUpperCase();
@@ -257,7 +281,7 @@ function buildAcceptedTextLine(signal: SignalRow, game: GameRow | null, bet: Bet
   const kind = signalKind(signal);
   const rule = ruleSummary(signal);
 
-  return `[ALREADY ACCEPTED] ${gameText} | ${venue} | ${signal.system_code} | ${kind} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule} | DO NOT DUPLICATE`;
+  return `[ALREADY ACCEPTED] ${back} | ${gameText} | ${venue} | ${signal.system_code} | ${kind} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule} | DO NOT DUPLICATE`;
 }
 
 function sortCandidates(a: CandidateRow, b: CandidateRow): number {

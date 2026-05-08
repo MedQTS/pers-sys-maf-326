@@ -48,20 +48,20 @@ function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{
   if (watchType === "T60") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T60" } },
-      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "PRECHECK_ONLY" } },
     ];
   }
   if (watchType === "T30") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T30" } },
-      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "ACTION_T30" } },
       { functionName: "pers-sys-send-t30-alert", payload: { game_id: gameId } },
     ];
   }
   if (watchType === "T10") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T10" } },
-      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId } },
+      { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "CLOSEOUT_ONLY" } },
     ];
   }
   return [];

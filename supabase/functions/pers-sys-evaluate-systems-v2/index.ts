@@ -81,6 +81,16 @@ type GameRow = {
 
 type Outcome = "WIN" | "LOSS" | "DRAW" | "UNKNOWN";
 
+type EvaluatorMode = "ACTION_T30" | "PRECHECK_ONLY" | "CLOSEOUT_ONLY";
+
+const VALID_EVALUATOR_MODES: readonly EvaluatorMode[] = ["ACTION_T30", "PRECHECK_ONLY", "CLOSEOUT_ONLY"];
+
+function resolveEvaluatorMode(rawMode: unknown): EvaluatorMode {
+  return typeof rawMode === "string" && VALID_EVALUATOR_MODES.includes(rawMode as EvaluatorMode)
+    ? (rawMode as EvaluatorMode)
+    : "PRECHECK_ONLY";
+}
+
 type SystemV2Row = {
   system_code: string;
   system_name?: string | null;
@@ -414,6 +424,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const season = Number(body.season ?? new Date().getFullYear());
     const horizonDays = Number(body.horizon_days ?? 10);
+    const evaluatorMode = resolveEvaluatorMode(body.evaluator_mode);
     const onlyGameId =
       typeof body.game_id === "string" && body.game_id.trim()
         ? body.game_id.trim()
@@ -495,7 +506,7 @@ Deno.serve(async (req) => {
     if (gamesErr) throw gamesErr;
 
     if (!systems?.length || !upcomingGames?.length) {
-      return new Response(JSON.stringify({ ok: true, season, signals_created: 0 }), {
+      return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -1979,7 +1990,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, season, signals_created: signalsCreated }), {
+    return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: signalsCreated }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

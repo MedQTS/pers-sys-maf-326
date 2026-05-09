@@ -1962,6 +1962,8 @@ Deno.serve(async (req) => {
 
         if (signalStatus !== "READY") continue;
 
+        if (evaluatorMode !== "ACTION_T30") continue;
+
         const signalOk = await upsertSignalV2({
           system_code,
           game_id: g.id,

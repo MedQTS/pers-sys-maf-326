@@ -105,9 +105,12 @@ Deno.serve(async (req) => {
       games = data ?? [];
     }
 
+    // test_mode = single-game lookup where the game is already completed
+    const anyTestMode = !!(gameIdParam && games[0] && new Date(games[0].start_time_aet).getTime() < Date.now());
+
     if (!games.length) {
       return new Response(
-        JSON.stringify({ ok: true, system_code: "SYS_10A", live: false, candidates: [], note: "No upcoming games in window." }),
+        JSON.stringify({ ok: true, system_code: "SYS_10A", live: false, test_mode: false, candidates: [], note: "No upcoming games in window." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

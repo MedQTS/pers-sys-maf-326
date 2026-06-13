@@ -1217,6 +1217,70 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_team_total_band_profile_named_v: {
+        Row: {
+          avg_actual_total: number | null
+          avg_main_total: number | null
+          avg_vs_main_total: number | null
+          games: number | null
+          home_away: string | null
+          over_140_pct: number | null
+          over_145_pct: number | null
+          over_150_pct: number | null
+          over_155_pct: number | null
+          over_160_pct: number | null
+          over_165_pct: number | null
+          over_170_pct: number | null
+          over_175_pct: number | null
+          over_180_pct: number | null
+          season: number | null
+          team: string | null
+          team_id: string | null
+        }
+        Relationships: []
+      }
+      pers_sys_team_total_band_profile_v: {
+        Row: {
+          avg_actual_total: number | null
+          avg_main_total: number | null
+          avg_vs_main_total: number | null
+          games: number | null
+          home_away: string | null
+          over_140_pct: number | null
+          over_145_pct: number | null
+          over_150_pct: number | null
+          over_155_pct: number | null
+          over_160_pct: number | null
+          over_165_pct: number | null
+          over_170_pct: number | null
+          over_175_pct: number | null
+          over_180_pct: number | null
+          season: number | null
+          team_id: string | null
+        }
+        Relationships: []
+      }
+      pers_sys_venue_total_band_profile_v: {
+        Row: {
+          avg_actual_total: number | null
+          avg_main_total: number | null
+          avg_vs_main_total: number | null
+          games: number | null
+          main_over_pct: number | null
+          over_140_pct: number | null
+          over_145_pct: number | null
+          over_150_pct: number | null
+          over_155_pct: number | null
+          over_160_pct: number | null
+          over_165_pct: number | null
+          over_170_pct: number | null
+          over_175_pct: number | null
+          over_180_pct: number | null
+          season: number | null
+          venue: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _round_to_5: { Args: { p_value: number }; Returns: number }

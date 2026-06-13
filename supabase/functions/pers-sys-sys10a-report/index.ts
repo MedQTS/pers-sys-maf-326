@@ -194,12 +194,15 @@ Deno.serve(async (req) => {
       // Eligibility gates
       const gateFails: string[] = [];
       if (!main_total) gateFails.push("missing_main_total");
-      if (out.samples.home_home_games < 4) gateFails.push("home_home_sample_lt_4");
-      if (out.samples.away_away_games < 4) gateFails.push("away_away_sample_lt_4");
-      if (out.samples.venue_games < 3) gateFails.push("venue_sample_lt_3");
+      if (!homeProfile) gateFails.push("home_profile_missing");
+      if (!awayProfile) gateFails.push("away_profile_missing");
+      if (!venueProfile) gateFails.push("venue_profile_missing");
+      if (homeProfile && out.samples.home_home_games < 4) gateFails.push("home_home_sample_lt_4");
+      if (awayProfile && out.samples.away_away_games < 4) gateFails.push("away_away_sample_lt_4");
+      if (venueProfile && out.samples.venue_games < 3) gateFails.push("venue_sample_lt_3");
 
       if (gateFails.length) {
-        candidates.push({ ...out, status: "SUPPRESSED", reasons: gateFails });
+        candidates.push({ ...out, status: "SUPPRESSED", suppression_reason: gateFails.join(","), reasons: gateFails });
         continue;
       }
 

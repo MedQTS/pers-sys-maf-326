@@ -1,0 +1,1 @@
+UPDATE public.pers_sys_systems_v2 SET active = false, updated_at = now() WHERE system_code IN ('SYS_6','SYS_9');

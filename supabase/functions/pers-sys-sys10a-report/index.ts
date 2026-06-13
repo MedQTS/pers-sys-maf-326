@@ -289,6 +289,7 @@ Deno.serve(async (req) => {
         ok: true,
         system_code: "SYS_10A",
         live: false,
+        test_mode: anyTestMode,
         generated_at: new Date().toISOString(),
         games_inspected: games.length,
         candidates,

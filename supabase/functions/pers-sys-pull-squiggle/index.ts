@@ -55,9 +55,21 @@ Deno.serve(async (req) => {
     // Pull from Squiggle
     const url = `https://api.squiggle.com.au/?q=games;year=${season}`;
     const resp = await fetch(url, {
-      headers: { "User-Agent": "pers-sys-runner/1.0 (personal use)" },
+      headers: {
+        "User-Agent": "pers-sys-runner/1.0 (contact: markferris06@gmail.com)",
+        "Accept": "application/json",
+      },
     });
-    if (!resp.ok) throw new Error(`Squiggle returned ${resp.status}`);
+    if (!resp.ok) {
+      const bodySnippet = (await resp.text().catch(() => "")).slice(0, 300);
+      console.error("pers-sys-pull-squiggle: Squiggle fetch failed", {
+        function: "pers-sys-pull-squiggle",
+        season,
+        status: resp.status,
+        body_snippet: bodySnippet,
+      });
+      throw new Error(`Squiggle returned ${resp.status}`);
+    }
     const json = await resp.json();
     const games = json.games || [];
 

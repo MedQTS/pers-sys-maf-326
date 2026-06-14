@@ -943,16 +943,24 @@ Deno.serve(async (req) => {
 
         // ==============================
         // SYS_1 — Dead Teams CLV Line Model (HARD+)
+        // Top 10 / wildcard era migration: dead team measured vs 10th place,
+        // opponent must be Top 10 or wildcard-live (within 8 pts of 10th).
+        // No historical Top 10 backtest exists; this is a structural
+        // extrapolation of the prior Top 8 rule.
         // ==============================
         if (system_code === "SYS_1") {
           // --- window check (rounds remaining 3–7) ---
           const rc = roundCtxByRound[round];
-          if (!rc || typeof rc.points_8th !== "number") {
+          const points10th = points10thByRound[round];
+          if (!rc || typeof points10th !== "number") {
             modelPass = false;
             reason.fail = "missing_round_context";
+            reason.cutline_basis = "top10";
           } else {
             const remaining = totalRounds - round + 1;
             reason.remaining_rounds = remaining;
+            reason.cutline_basis = "top10";
+            reason.points_10th = points10th;
 
             if (remaining < 3 || remaining > 7) {
               modelPass = false;
@@ -960,39 +968,43 @@ Deno.serve(async (req) => {
             }
           }
 
-          // --- ladder rule ---
+          // --- ladder rule (vs 10th place) ---
           if (modelPass) {
             if (!homeState || !awayState) {
               modelPass = false;
               reason.fail = "missing_ladder";
             } else {
-              const rc = roundCtxByRound[round];
               const homePts = premiershipPoints(homeState.wins, homeState.draws);
               const awayPts = premiershipPoints(awayState.wins, awayState.draws);
 
-              const minBehind = 8;
-              const homeBehind = rc.points_8th - homePts;
-              const awayBehind = rc.points_8th - awayPts;
+              const minBehind = 8; // >= 8 premiership points behind 10th place
+              const homeBehind = points10th - homePts;
+              const awayBehind = points10th - awayPts;
 
               const homeDead = homeBehind >= minBehind;
               const awayDead = awayBehind >= minBehind;
 
               if (!homeDead && !awayDead) {
                 modelPass = false;
-                reason.fail = "dead_team_not_identified";
+                reason.fail = "dead_team_not_identified_vs_10th";
               } else if (homeDead && awayDead) {
                 modelPass = false;
                 reason.fail = "dead_side_ambiguous";
               } else {
                 const deadSide: Side = homeDead ? "HOME" : "AWAY";
                 reason.dead_side = deadSide;
+                reason.dead_team_behind_10th = homeDead ? homeBehind : awayBehind;
 
-                // opponent must be top-8
+                // opponent must be Top 10 OR wildcard-live (within 8 pts of 10th)
                 const oppPts = deadSide === "HOME" ? awayPts : homePts;
-                if (oppPts < rc.points_8th) {
+                const oppBehind = points10th - oppPts;
+                reason.opponent_behind_10th = oppBehind;
+                const oppTop10OrWildcard = oppBehind < minBehind; // at-or-above 10th, or live for wildcard contention
+                if (!oppTop10OrWildcard) {
                   modelPass = false;
-                  reason.fail = "opponent_not_top8";
+                  reason.fail = "opponent_not_top10_or_wildcard_live";
                 }
+
 
                 if (modelPass) {
                   // --- CLV check (line-based, >= 3%) ---

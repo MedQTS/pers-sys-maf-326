@@ -903,6 +903,8 @@ Deno.serve(async (req) => {
             c === "not_interstate" ||
             c === "venue_state" ||
             c === "opponent_not_top8" ||
+            c === "opponent_not_top10_or_wildcard_live" ||
+            c === "dead_team_not_identified_vs_10th" ||
             c === "opponent_wins" ||
             c === "dead_side_ambiguous" ||
             c === "h2h_band" ||

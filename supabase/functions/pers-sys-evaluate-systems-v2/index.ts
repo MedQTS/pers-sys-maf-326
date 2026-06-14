@@ -595,6 +595,55 @@ Deno.serve(async (req) => {
     const roundCtxByRound: Record<number, any> = {};
     for (const rc of (roundCtx as any[]) || []) if (typeof rc.round === "number") roundCtxByRound[rc.round] = rc;
 
+    // ------------------------------------------------------------
+    // Top 10 ladder cutoff (SYS_1 era migration).
+    // Structural Top 10 / wildcard-era migration: legacy build-features
+    // only persists points_8th. Compute points_10th here from completed
+    // games without altering schema. No historical Top 10 backtest exists.
+    // ------------------------------------------------------------
+    const points10thByRound: Record<number, number> = {};
+    {
+      const { data: completedGames } = await supabase
+        .from("pers_sys_games")
+        .select("round, home_team_id, away_team_id, home_score, away_score, status")
+        .eq("season", season)
+        .eq("status", "FT");
+
+      const rounds = [
+        ...new Set(
+          ((completedGames as any[]) || [])
+            .map((g) => g.round)
+            .filter((r: any) => typeof r === "number" && Number.isFinite(r)),
+        ),
+      ].sort((a: number, b: number) => a - b);
+
+      for (const r of rounds) {
+        const upTo = ((completedGames as any[]) || []).filter(
+          (g) => typeof g.round === "number" && g.round <= r,
+        );
+        const ladder: Record<string, { wins: number; draws: number; pf: number; pa: number }> = {};
+        for (const g of upTo) {
+          if (!ladder[g.home_team_id]) ladder[g.home_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+          if (!ladder[g.away_team_id]) ladder[g.away_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+          const hs = g.home_score ?? 0;
+          const as_ = g.away_score ?? 0;
+          ladder[g.home_team_id].pf += hs;
+          ladder[g.home_team_id].pa += as_;
+          ladder[g.away_team_id].pf += as_;
+          ladder[g.away_team_id].pa += hs;
+          if (hs > as_) ladder[g.home_team_id].wins++;
+          else if (as_ > hs) ladder[g.away_team_id].wins++;
+          else { ladder[g.home_team_id].draws++; ladder[g.away_team_id].draws++; }
+        }
+        const sorted = Object.entries(ladder)
+          .map(([tid, s]) => ({ tid, points: s.wins * 4 + s.draws * 2, pct: s.pa > 0 ? (s.pf / s.pa) * 100 : 100 }))
+          .sort((a, b) => b.points - a.points || b.pct - a.pct);
+        if (sorted.length >= 10) {
+          points10thByRound[r as number] = sorted[9].points;
+        }
+      }
+    }
+
     const venueStateByVenue: Record<string, string> = {};
     {
       const { data: vs } = await supabase.from("pers_sys_venue_state").select("*").limit(5000);

@@ -595,6 +595,55 @@ Deno.serve(async (req) => {
     const roundCtxByRound: Record<number, any> = {};
     for (const rc of (roundCtx as any[]) || []) if (typeof rc.round === "number") roundCtxByRound[rc.round] = rc;
 
+    // ------------------------------------------------------------
+    // Top 10 ladder cutoff (SYS_1 era migration).
+    // Structural Top 10 / wildcard-era migration: legacy build-features
+    // only persists points_8th. Compute points_10th here from completed
+    // games without altering schema. No historical Top 10 backtest exists.
+    // ------------------------------------------------------------
+    const points10thByRound: Record<number, number> = {};
+    {
+      const { data: completedGames } = await supabase
+        .from("pers_sys_games")
+        .select("round, home_team_id, away_team_id, home_score, away_score, status")
+        .eq("season", season)
+        .eq("status", "FT");
+
+      const rounds = [
+        ...new Set(
+          ((completedGames as any[]) || [])
+            .map((g) => g.round)
+            .filter((r: any) => typeof r === "number" && Number.isFinite(r)),
+        ),
+      ].sort((a: number, b: number) => a - b);
+
+      for (const r of rounds) {
+        const upTo = ((completedGames as any[]) || []).filter(
+          (g) => typeof g.round === "number" && g.round <= r,
+        );
+        const ladder: Record<string, { wins: number; draws: number; pf: number; pa: number }> = {};
+        for (const g of upTo) {
+          if (!ladder[g.home_team_id]) ladder[g.home_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+          if (!ladder[g.away_team_id]) ladder[g.away_team_id] = { wins: 0, draws: 0, pf: 0, pa: 0 };
+          const hs = g.home_score ?? 0;
+          const as_ = g.away_score ?? 0;
+          ladder[g.home_team_id].pf += hs;
+          ladder[g.home_team_id].pa += as_;
+          ladder[g.away_team_id].pf += as_;
+          ladder[g.away_team_id].pa += hs;
+          if (hs > as_) ladder[g.home_team_id].wins++;
+          else if (as_ > hs) ladder[g.away_team_id].wins++;
+          else { ladder[g.home_team_id].draws++; ladder[g.away_team_id].draws++; }
+        }
+        const sorted = Object.entries(ladder)
+          .map(([tid, s]) => ({ tid, points: s.wins * 4 + s.draws * 2, pct: s.pa > 0 ? (s.pf / s.pa) * 100 : 100 }))
+          .sort((a, b) => b.points - a.points || b.pct - a.pct);
+        if (sorted.length >= 10) {
+          points10thByRound[r as number] = sorted[9].points;
+        }
+      }
+    }
+
     const venueStateByVenue: Record<string, string> = {};
     {
       const { data: vs } = await supabase.from("pers_sys_venue_state").select("*").limit(5000);
@@ -854,6 +903,8 @@ Deno.serve(async (req) => {
             c === "not_interstate" ||
             c === "venue_state" ||
             c === "opponent_not_top8" ||
+            c === "opponent_not_top10_or_wildcard_live" ||
+            c === "dead_team_not_identified_vs_10th" ||
             c === "opponent_wins" ||
             c === "dead_side_ambiguous" ||
             c === "h2h_band" ||
@@ -894,16 +945,24 @@ Deno.serve(async (req) => {
 
         // ==============================
         // SYS_1 — Dead Teams CLV Line Model (HARD+)
+        // Top 10 / wildcard era migration: dead team measured vs 10th place,
+        // opponent must be Top 10 or wildcard-live (within 8 pts of 10th).
+        // No historical Top 10 backtest exists; this is a structural
+        // extrapolation of the prior Top 8 rule.
         // ==============================
         if (system_code === "SYS_1") {
           // --- window check (rounds remaining 3–7) ---
           const rc = roundCtxByRound[round];
-          if (!rc || typeof rc.points_8th !== "number") {
+          const points10th = points10thByRound[round];
+          if (!rc || typeof points10th !== "number") {
             modelPass = false;
             reason.fail = "missing_round_context";
+            reason.cutline_basis = "top10";
           } else {
             const remaining = totalRounds - round + 1;
             reason.remaining_rounds = remaining;
+            reason.cutline_basis = "top10";
+            reason.points_10th = points10th;
 
             if (remaining < 3 || remaining > 7) {
               modelPass = false;
@@ -911,39 +970,43 @@ Deno.serve(async (req) => {
             }
           }
 
-          // --- ladder rule ---
+          // --- ladder rule (vs 10th place) ---
           if (modelPass) {
             if (!homeState || !awayState) {
               modelPass = false;
               reason.fail = "missing_ladder";
             } else {
-              const rc = roundCtxByRound[round];
               const homePts = premiershipPoints(homeState.wins, homeState.draws);
               const awayPts = premiershipPoints(awayState.wins, awayState.draws);
 
-              const minBehind = 8;
-              const homeBehind = rc.points_8th - homePts;
-              const awayBehind = rc.points_8th - awayPts;
+              const minBehind = 8; // >= 8 premiership points behind 10th place
+              const homeBehind = points10th - homePts;
+              const awayBehind = points10th - awayPts;
 
               const homeDead = homeBehind >= minBehind;
               const awayDead = awayBehind >= minBehind;
 
               if (!homeDead && !awayDead) {
                 modelPass = false;
-                reason.fail = "dead_team_not_identified";
+                reason.fail = "dead_team_not_identified_vs_10th";
               } else if (homeDead && awayDead) {
                 modelPass = false;
                 reason.fail = "dead_side_ambiguous";
               } else {
                 const deadSide: Side = homeDead ? "HOME" : "AWAY";
                 reason.dead_side = deadSide;
+                reason.dead_team_behind_10th = homeDead ? homeBehind : awayBehind;
 
-                // opponent must be top-8
+                // opponent must be Top 10 OR wildcard-live (within 8 pts of 10th)
                 const oppPts = deadSide === "HOME" ? awayPts : homePts;
-                if (oppPts < rc.points_8th) {
+                const oppBehind = points10th - oppPts;
+                reason.opponent_behind_10th = oppBehind;
+                const oppTop10OrWildcard = oppBehind < minBehind; // at-or-above 10th, or live for wildcard contention
+                if (!oppTop10OrWildcard) {
                   modelPass = false;
-                  reason.fail = "opponent_not_top8";
+                  reason.fail = "opponent_not_top10_or_wildcard_live";
                 }
+
 
                 if (modelPass) {
                   // --- CLV check (line-based, >= 3%) ---

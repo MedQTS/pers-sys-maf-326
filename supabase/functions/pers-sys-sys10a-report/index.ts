@@ -366,8 +366,13 @@ Deno.serve(async (req) => {
         alt_bands.push(bandRow);
         if (eligible) eligibleAltBands.push(bandRow);
 
-        for (const r of reasons) bumpReason(r);
+        for (const r of reasons) {
+          if (r === "recent_form_suppresses_pass_alt_over") continue; // bumped once per game below
+          bumpReason(r);
+        }
       }
+
+      if (suppress_alt_over_recent_form) bumpReason("recent_form_suppresses_pass_alt_over");
 
       // Cascade — only over eligible market-near bands; cap at two
       let cascade: any = null;

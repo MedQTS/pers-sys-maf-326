@@ -49,7 +49,17 @@ type Candidate = {
   status: "CANDIDATE" | "SUPPRESSED";
   suppression_reason?: string | null;
   alt_over_suppressed_due_main_under_lean?: boolean;
+  recent_form_overlay_applied?: boolean;
+  recent_form_overlay_action?: string;
+  overlay_warnings?: string[];
 };
+
+function hasRecentFormOverWarning(c: Candidate): boolean {
+  return (
+    c.main_lean === "MAIN_TOTAL_OVER" &&
+    !!c.recent_form_overlay_applied &&
+    (c.overlay_warnings ?? []).includes("recent_form_conflicts_with_main_over")
+  );
 
 function esc(s: unknown): string {
   return String(s ?? "")

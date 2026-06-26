@@ -326,6 +326,10 @@ Deno.serve(async (req) => {
           reasons.push("alt_over_suppressed_due_main_under_lean");
           alt_over_suppressed_due_main_under_lean = true;
         }
+        if (eligible && suppress_alt_over_recent_form) {
+          eligible = false;
+          reasons.push("recent_form_suppresses_pass_alt_over");
+        }
         if (eligible && alt_gap !== null) {
           if (band < Number(main_total) - ALT_GAP_LIMIT) {
             eligible = false;

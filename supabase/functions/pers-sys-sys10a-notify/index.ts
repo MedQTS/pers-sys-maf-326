@@ -49,7 +49,17 @@ type Candidate = {
   status: "CANDIDATE" | "SUPPRESSED";
   suppression_reason?: string | null;
   alt_over_suppressed_due_main_under_lean?: boolean;
+  recent_form_overlay_applied?: boolean;
+  recent_form_overlay_action?: string;
+  overlay_warnings?: string[];
 };
+
+function hasRecentFormOverWarning(c: Candidate): boolean {
+  return (
+    c.main_lean === "MAIN_TOTAL_OVER" &&
+    !!c.recent_form_overlay_applied &&
+    (c.overlay_warnings ?? []).includes("recent_form_conflicts_with_main_over")
+  );
 
 function esc(s: unknown): string {
   return String(s ?? "")
@@ -63,11 +73,15 @@ function eligibleAltBands(c: Candidate): AltBand[] {
 }
 
 function renderMainHtml(c: Candidate): string {
+  const warn = hasRecentFormOverWarning(c)
+    ? `<div style="margin-top:6px;padding:6px 8px;background:#fff7cc;border:1px solid #e0c200;">⚠ Recent 5-game scoring profile is below the current main total; manual caution required.</div>`
+    : "";
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
       <div style="font-weight:bold;font-size:14px;">${esc(c.home)} vs ${esc(c.away)} — ${esc(c.venue)}</div>
       <div>Main total: <strong>${c.main_total ?? "—"}</strong> | Over ${c.over_price ?? "—"} / Under ${c.under_price ?? "—"}</div>
       <div>Estimated total: ${c.estimated_total ?? "—"} | Edge: ${c.main_edge ?? "—"} | Lean: <strong>${esc(c.main_lean)}</strong> | Main stake guidance: ${c.main_stake_guidance_u ?? 0}u</div>
+      ${warn}
     </div>`;
 }
 
@@ -95,11 +109,15 @@ function renderAltHtml(c: Candidate): string {
 }
 
 function renderMainText(c: Candidate): string {
-  return [
+  const lines = [
     `${c.home} vs ${c.away} — ${c.venue}`,
     `  Main total: ${c.main_total} | Over ${c.over_price} / Under ${c.under_price}`,
     `  Est total: ${c.estimated_total} | Edge: ${c.main_edge} | Lean: ${c.main_lean} | Main stake: ${c.main_stake_guidance_u ?? 0}u`,
-  ].join("\n");
+  ];
+  if (hasRecentFormOverWarning(c)) {
+    lines.push(`  !! Recent 5-game scoring profile is below the current main total; manual caution required.`);
+  }
+  return lines.join("\n");
 }
 
 function renderAltText(c: Candidate): string {

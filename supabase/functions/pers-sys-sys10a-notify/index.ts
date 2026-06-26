@@ -73,11 +73,15 @@ function eligibleAltBands(c: Candidate): AltBand[] {
 }
 
 function renderMainHtml(c: Candidate): string {
+  const warn = hasRecentFormOverWarning(c)
+    ? `<div style="margin-top:6px;padding:6px 8px;background:#fff7cc;border:1px solid #e0c200;">⚠ Recent 5-game scoring profile is below the current main total; manual caution required.</div>`
+    : "";
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
       <div style="font-weight:bold;font-size:14px;">${esc(c.home)} vs ${esc(c.away)} — ${esc(c.venue)}</div>
       <div>Main total: <strong>${c.main_total ?? "—"}</strong> | Over ${c.over_price ?? "—"} / Under ${c.under_price ?? "—"}</div>
       <div>Estimated total: ${c.estimated_total ?? "—"} | Edge: ${c.main_edge ?? "—"} | Lean: <strong>${esc(c.main_lean)}</strong> | Main stake guidance: ${c.main_stake_guidance_u ?? 0}u</div>
+      ${warn}
     </div>`;
 }
 

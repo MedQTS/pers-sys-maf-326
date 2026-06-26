@@ -109,11 +109,15 @@ function renderAltHtml(c: Candidate): string {
 }
 
 function renderMainText(c: Candidate): string {
-  return [
+  const lines = [
     `${c.home} vs ${c.away} — ${c.venue}`,
     `  Main total: ${c.main_total} | Over ${c.over_price} / Under ${c.under_price}`,
     `  Est total: ${c.estimated_total} | Edge: ${c.main_edge} | Lean: ${c.main_lean} | Main stake: ${c.main_stake_guidance_u ?? 0}u`,
-  ].join("\n");
+  ];
+  if (hasRecentFormOverWarning(c)) {
+    lines.push(`  !! Recent 5-game scoring profile is below the current main total; manual caution required.`);
+  }
+  return lines.join("\n");
 }
 
 function renderAltText(c: Candidate): string {

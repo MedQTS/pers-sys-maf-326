@@ -236,6 +236,63 @@ Deno.serve(async (req) => {
       const main_lean = main_edge >= 5 ? "MAIN_TOTAL_OVER" : main_edge <= -5 ? "MAIN_TOTAL_UNDER" : "PASS";
       const main_stake_guidance_u = main_lean === "PASS" ? 0 : 0.5;
 
+      // -------- Rule D: Recent-form overlay (PASS-lean alt-over suppression) --------
+      // Pull each team's last up-to-5 completed (FT) game totals strictly before this
+      // game's start time, in season. Read-only.
+      async function recent5Totals(teamId: string): Promise<number[]> {
+        const { data, error } = await supabase
+          .from("pers_sys_games")
+          .select("start_time_aet, home_score, away_score, status, home_team_id, away_team_id")
+          .eq("season", g.season)
+          .eq("status", "FT")
+          .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+          .lt("start_time_aet", g.start_time_aet)
+          .order("start_time_aet", { ascending: false })
+          .limit(5);
+        if (error || !data) return [];
+        return data
+          .filter((r: any) => r.home_score !== null && r.away_score !== null)
+          .map((r: any) => Number(r.home_score) + Number(r.away_score));
+      }
+
+      const [homeRecentTotals, awayRecentTotals] = await Promise.all([
+        recent5Totals(g.home_team_id),
+        recent5Totals(g.away_team_id),
+      ]);
+      const avg = (xs: number[]): number | null =>
+        xs.length ? Number((xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2)) : null;
+      const home_recent_5_avg_total = avg(homeRecentTotals);
+      const away_recent_5_avg_total = avg(awayRecentTotals);
+      const sufficient_recent_sample = homeRecentTotals.length >= 4 && awayRecentTotals.length >= 4;
+      const blended_recent_5_avg =
+        home_recent_5_avg_total !== null && away_recent_5_avg_total !== null
+          ? Number(((home_recent_5_avg_total + away_recent_5_avg_total) / 2).toFixed(2))
+          : null;
+      const recent_gap =
+        blended_recent_5_avg !== null && main_total !== null
+          ? Number((blended_recent_5_avg - Number(main_total)).toFixed(2))
+          : null;
+
+      const ruleDTriggers =
+        sufficient_recent_sample &&
+        blended_recent_5_avg !== null &&
+        main_total !== null &&
+        blended_recent_5_avg <= Number(main_total) - 8;
+
+      const recent_form_overlay_applied = ruleDTriggers && (main_lean === "PASS" || main_lean === "MAIN_TOTAL_OVER");
+      const suppress_alt_over_recent_form = ruleDTriggers && main_lean === "PASS";
+      const recent_form_warning_main_over = ruleDTriggers && main_lean === "MAIN_TOTAL_OVER";
+      const recent_form_overlay_action = suppress_alt_over_recent_form
+        ? "SUPPRESS_ALT_OVER"
+        : recent_form_warning_main_over
+        ? "WARN_MAIN_OVER"
+        : "NONE";
+
+      const overlay_warnings: string[] = [];
+      if (!sufficient_recent_sample) overlay_warnings.push("insufficient_recent_sample_for_overlay");
+      if (recent_form_warning_main_over) overlay_warnings.push("recent_form_conflicts_with_main_over");
+      // -----------------------------------------------------------------------------
+
       // Alt bands — compute clearance for all, then apply market-near + odds filters.
       const alt_bands: any[] = [];
       const passingBandsForVenueCaution: Band[] = [];

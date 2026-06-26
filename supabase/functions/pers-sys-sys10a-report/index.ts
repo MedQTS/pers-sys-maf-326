@@ -418,16 +418,31 @@ Deno.serve(async (req) => {
         cascade,
         venue_caution,
         alt_over_suppressed_due_main_under_lean,
+        home_recent_5_avg_total,
+        away_recent_5_avg_total,
+        blended_recent_5_avg,
+        recent_gap,
+        recent_form_overlay_applied,
+        recent_form_overlay_action,
+        recent_form_sample: {
+          home_games: homeRecentTotals.length,
+          away_games: awayRecentTotals.length,
+          sufficient: sufficient_recent_sample,
+        },
+        overlay_warnings,
       };
 
       if (!actionable) {
         const reason =
-          main_lean === "PASS"
+          suppress_alt_over_recent_form && main_lean === "PASS"
+            ? "recent_form_suppresses_pass_alt_over"
+            : main_lean === "PASS"
             ? "pass_no_actionable_alt_candidate"
             : main_lean === "MAIN_TOTAL_UNDER"
             ? "main_under_no_alt_candidate"
             : "no_actionable_recommendation";
-        bumpReason(reason);
+        // Avoid double-counting recent_form_suppresses_pass_alt_over (already bumped once above)
+        if (reason !== "recent_form_suppresses_pass_alt_over") bumpReason(reason);
         candidates.push({
           ...base,
           status: "SUPPRESSED",

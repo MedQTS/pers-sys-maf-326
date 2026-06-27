@@ -237,9 +237,11 @@ Deno.serve(async (req) => {
 
     async function writeSnapshot(row: Record<string, unknown>) {
       if (snapshotType === "OPEN") {
+        // Write-once OPEN: upsert with ignoreDuplicates so re-runs skip existing
+        // rows instead of raising a unique-constraint violation.
         return await supabase
           .from("pers_sys_market_snapshots")
-          .insert(row as any, { onConflict: SNAPSHOT_CONFLICT, ignoreDuplicates: true } as any);
+          .upsert(row as any, { onConflict: SNAPSHOT_CONFLICT, ignoreDuplicates: true });
       }
       return await supabase.from("pers_sys_market_snapshots").upsert(row as any, { onConflict: SNAPSHOT_CONFLICT });
     }

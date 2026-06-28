@@ -42,12 +42,13 @@ async function callEdgeFunction(args: {
   };
 }
 
-function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{ functionName: string; payload: Record<string, unknown> }> {
+function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{ functionName: string; payload: Record<string, unknown>; nonFatal?: boolean }> {
   if (!gameId) return [];
 
   if (watchType === "T60") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T60" } },
+      { functionName: "pers-sys-weather-seed-precheck", payload: { mode: "PRECHECK_ONLY", game_id: gameId }, nonFatal: true },
       { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "PRECHECK_ONLY" } },
     ];
   }
@@ -208,6 +209,12 @@ Deno.serve(async (req) => {
         payload: step.payload,
       });
       downstreamSteps.push(result);
+
+      if (!result.ok && step.nonFatal) {
+        // Non-fatal step (e.g. passive weather seeding): log and continue
+        (result as any).nonFatal = true;
+        continue;
+      }
 
       if (!result.ok) {
         // Step failed — mark run as FAILED and return 502

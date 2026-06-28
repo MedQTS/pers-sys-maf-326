@@ -210,6 +210,12 @@ Deno.serve(async (req) => {
       });
       downstreamSteps.push(result);
 
+      if (!result.ok && step.nonFatal) {
+        // Non-fatal step (e.g. passive weather seeding): log and continue
+        (result as any).nonFatal = true;
+        continue;
+      }
+
       if (!result.ok) {
         // Step failed — mark run as FAILED and return 502
         const failNote = JSON.stringify({

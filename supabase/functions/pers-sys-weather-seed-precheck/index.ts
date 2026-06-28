@@ -144,6 +144,8 @@ Deno.serve(async (req) => {
         mode,
         season,
         horizon_days: horizonDays,
+        snapshot_stage: snapshotStage,
+        assessment_stage: assessmentStage,
         systems: systemCodes,
         ...counters,
       }),

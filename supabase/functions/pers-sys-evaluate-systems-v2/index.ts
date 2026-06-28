@@ -819,6 +819,87 @@ Deno.serve(async (req) => {
       };
     }
 
+    // ---------------------------------------------------------------
+    // Phase 4A: Active weather decisioning helper (disabled by default).
+    // Pure mapping over the shadow payload. When the per-system flag
+    // weather_active_decisioning_enabled is false (the default for all
+    // systems), this helper records DISABLED audit fields only and does
+    // NOT alter signal status, stake, alerts, bets, or any side-effect.
+    // The active path is consumed by callers ONLY behind the flag; the
+    // evaluator does not act on these fields in Phase 4A.
+    // ---------------------------------------------------------------
+    function computeWeatherActiveDecision(
+      payload: Record<string, any>,
+      active_enabled: boolean,
+    ): Record<string, any> {
+      if (!active_enabled) {
+        return {
+          ...payload,
+          weather_active_decisioning_enabled: false,
+          weather_active_action: "DISABLED",
+          weather_active_reason: "weather_active_decisioning_disabled",
+          weather_active_applied: false,
+          weather_active_would_change_signal: false,
+          weather_active_would_change_stake: false,
+        };
+      }
+
+      const status = payload.weather_status;
+      const outcome = payload.weather_outcome;
+      const reason = payload.weather_reason_code;
+
+      let action = "ACTIVE_NO_ACTION";
+      let action_reason: string | null = reason ?? null;
+      let would_change_signal = false;
+      let would_change_stake = false;
+
+      if (status === "NOT_ENABLED") {
+        action = "ACTIVE_NOT_ENABLED";
+        action_reason = "system_weather_not_enabled";
+      } else if (status === "ERROR") {
+        action = "ACTIVE_WEATHER_ERROR";
+        action_reason = reason ?? "weather_read_error";
+      } else if (status === "NOT_FOUND") {
+        action = "ACTIVE_WEATHER_NOT_FOUND";
+        action_reason = "missing_t30_weather_assessment";
+      } else if (status === "NOT_APPLICABLE" || outcome === "NOT_APPLICABLE") {
+        action = "ACTIVE_NO_ACTION";
+        action_reason = reason ?? "indoor_venue";
+      } else if (status === "FOUND") {
+        if (outcome === "PASS") {
+          action = "WOULD_ACTIVE_SUPPRESS";
+          action_reason = "active_weather_pass";
+          would_change_signal = true;
+        } else if (outcome === "HALF_STAKE") {
+          action = "WOULD_ACTIVE_HALF_STAKE";
+          action_reason = "active_weather_half_stake";
+          would_change_stake = true;
+        } else if (outcome === "FULL_STAKE") {
+          action = "WOULD_ACTIVE_KEEP_FULL_STAKE";
+          action_reason = reason ?? null;
+        }
+      }
+
+      return {
+        ...payload,
+        weather_active_decisioning_enabled: true,
+        weather_active_action: action,
+        weather_active_reason: action_reason,
+        // Phase 4A: never actually applied to live signals/stake.
+        weather_active_applied: false,
+        weather_active_would_change_signal: would_change_signal,
+        weather_active_would_change_stake: would_change_stake,
+      };
+    }
+    async function loadPassiveWeatherAssessmentWithActive(
+      sys: any,
+      game_id: string,
+    ): Promise<Record<string, any>> {
+      const shadow = await loadPassiveWeatherAssessment(sys, game_id);
+      const active_enabled = Boolean(sys?.weather_active_decisioning_enabled);
+      return computeWeatherActiveDecision(shadow, active_enabled);
+    }
+
     async function loadPassiveWeatherAssessment(
       sys: any,
       game_id: string,
@@ -2043,7 +2124,7 @@ Deno.serve(async (req) => {
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
         // Phase 2A: passive weather visibility (read-only; never affects decisions).
-        const passiveWeather = await loadPassiveWeatherAssessment(sys, g.id);
+        const passiveWeather = await loadPassiveWeatherAssessmentWithActive(sys, g.id);
         reason.weather = passiveWeather;
 
         if (!modelPass || !primaryLeg) {

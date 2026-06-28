@@ -430,6 +430,34 @@ Deno.serve(async (req) => {
         ? body.game_id.trim()
         : null;
 
+    // Phase 4D: dry-run override for active weather decisioning.
+    // Honored ONLY in PRECHECK_ONLY mode (non-signal-writing).
+    // Never enables production flags or writes signals/bets/alerts.
+    const dryRunOverrideRequested = body.weather_active_dry_run_override === true;
+    const dryRunOverrideReason =
+      typeof body.weather_active_dry_run_reason === "string"
+        ? body.weather_active_dry_run_reason.trim()
+        : "";
+    const dryRunOverrideSystems: Set<string> = new Set(
+      Array.isArray(body.weather_active_dry_run_system_codes)
+        ? body.weather_active_dry_run_system_codes
+            .filter((s: unknown) => typeof s === "string")
+            .map((s: string) => s.trim().toUpperCase())
+            .filter(Boolean)
+        : [],
+    );
+    let dryRunOverrideActive = false;
+    let dryRunOverrideRejectedReason: string | null = null;
+    if (dryRunOverrideRequested) {
+      if (evaluatorMode !== "PRECHECK_ONLY") {
+        dryRunOverrideRejectedReason = "unsafe_mode_requires_PRECHECK_ONLY";
+      } else if (!dryRunOverrideReason) {
+        dryRunOverrideRejectedReason = "missing_weather_active_dry_run_reason";
+      } else {
+        dryRunOverrideActive = true;
+      }
+    }
+
     const now = new Date();
     const startIso = now.toISOString();
     const endIso = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000).toISOString();
@@ -2184,8 +2212,24 @@ Deno.serve(async (req) => {
         // -------------------------
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
-        // Phase 2A: passive weather visibility (read-only; never affects decisions).
-        const passiveWeather = await loadPassiveWeatherAssessmentWithActive(sys, g.id);
+        // Phase 2A passive load + Phase 4D dry-run override.
+        const dryRunAppliesToThisSystem =
+          dryRunOverrideActive &&
+          (dryRunOverrideSystems.size === 0 || dryRunOverrideSystems.has(system_code));
+        const effectiveActiveEnabled =
+          Boolean(sys?.weather_active_decisioning_enabled) || dryRunAppliesToThisSystem;
+        const passiveShadow = await loadPassiveWeatherAssessment(sys, g.id);
+        const passiveWeather = {
+          ...computeWeatherActiveDecision(passiveShadow, effectiveActiveEnabled),
+          weather_active_decisioning_enabled_effective: effectiveActiveEnabled,
+          weather_active_decisioning_enabled_source: dryRunAppliesToThisSystem
+            ? "dry_run_override"
+            : Boolean(sys?.weather_active_decisioning_enabled)
+              ? "production_flag"
+              : "disabled",
+          weather_active_dry_run_override: dryRunAppliesToThisSystem,
+          weather_active_dry_run_reason: dryRunAppliesToThisSystem ? dryRunOverrideReason : null,
+        };
         reason.weather = passiveWeather;
 
         if (!modelPass || !primaryLeg) {
@@ -2342,7 +2386,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: signalsCreated }), {
+    return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: signalsCreated, weather_active_dry_run_override: dryRunOverrideActive, weather_active_dry_run_override_rejected: dryRunOverrideRejectedReason, weather_active_dry_run_system_codes: Array.from(dryRunOverrideSystems) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

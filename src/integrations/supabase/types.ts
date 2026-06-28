@@ -933,6 +933,7 @@ export type Database = {
           system_priority: number | null
           updated_at: string | null
           venue_states_allowed: string[] | null
+          weather_active_decisioning_enabled: boolean
           weather_enabled: boolean
           weather_gate_snapshot: string | null
           weather_policy_code: string | null
@@ -990,6 +991,7 @@ export type Database = {
           system_priority?: number | null
           updated_at?: string | null
           venue_states_allowed?: string[] | null
+          weather_active_decisioning_enabled?: boolean
           weather_enabled?: boolean
           weather_gate_snapshot?: string | null
           weather_policy_code?: string | null
@@ -1047,6 +1049,7 @@ export type Database = {
           system_priority?: number | null
           updated_at?: string | null
           venue_states_allowed?: string[] | null
+          weather_active_decisioning_enabled?: boolean
           weather_enabled?: boolean
           weather_gate_snapshot?: string | null
           weather_policy_code?: string | null

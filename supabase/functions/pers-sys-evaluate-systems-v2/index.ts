@@ -802,7 +802,7 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase
           .from("pers_sys_weather_assessments")
           .select(
-            "outcome, reason_code, wind_kmh_max, gust_kmh_max, rain_mm_total, snapshot_id, assessed_at",
+            "outcome, reason_code, wind_kmh_max, gust_kmh_max, rain_mm_total, weather_snapshot_id, assessed_at",
           )
           .eq("game_id", game_id)
           .eq("system_code", String(sys.system_code))
@@ -828,7 +828,7 @@ Deno.serve(async (req) => {
           weather_wind_kmh_max: (data as any).wind_kmh_max ?? null,
           weather_gust_kmh_max: (data as any).gust_kmh_max ?? null,
           weather_rain_mm_total: (data as any).rain_mm_total ?? null,
-          weather_snapshot_id: (data as any).snapshot_id ?? null,
+          weather_snapshot_id: (data as any).weather_snapshot_id ?? null,
           weather_assessed_at: (data as any).assessed_at ?? null,
           weather_status: status,
         };

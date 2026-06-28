@@ -105,10 +105,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // One fetch per game (stage T30); same snapshot reused by all systems
+      // One fetch per game; same snapshot reused by all systems
       const fetched = await callFn("pers-sys-weather-fetch", {
         game_id: g.id,
-        snapshot_stage: "T30",
+        snapshot_stage: snapshotStage,
       });
       if (fetched.status !== 200 || !(fetched.json as any)?.ok) {
         counters.errors.push({ stage: "fetch", game_id: g.id, response: fetched.json });
@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
         const assessed = await callFn("pers-sys-weather-assess", {
           game_id: g.id,
           system_code: code,
-          assessment_stage: "T30",
+          assessment_stage: assessmentStage,
         });
         if (assessed.status !== 200 || !(assessed.json as any)?.ok) {
           counters.errors.push({

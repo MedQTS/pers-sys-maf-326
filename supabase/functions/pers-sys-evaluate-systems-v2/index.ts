@@ -2267,6 +2267,22 @@ Deno.serve(async (req) => {
           signalStatus = "READY";
         }
 
+        // Phase 4C: apply active weather decisioning behind disabled flag.
+        // When sys.weather_active_decisioning_enabled is false (default
+        // for all production systems), this is a structural no-op.
+        {
+          const wxApplied = applyWeatherActiveDecisionToCandidate(
+            { signalStatus, recommendedUnits, recommendedBankrollPct },
+            passiveWeather,
+          );
+          signalStatus = wxApplied.candidate.signalStatus;
+          recommendedUnits = wxApplied.candidate.recommendedUnits;
+          recommendedBankrollPct = wxApplied.candidate.recommendedBankrollPct;
+          reason.recommended_units = recommendedUnits;
+          reason.recommended_bankroll_pct = recommendedBankrollPct;
+          reason.weather = { ...passiveWeather, ...wxApplied.audit };
+        }
+
         await upsertAuditV2({
           system_code,
           game_id: g.id,

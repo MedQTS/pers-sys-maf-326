@@ -763,6 +763,80 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---------------------------------------------------------------
+    // Phase 2A — Passive weather visibility (read-only).
+    // Reads latest pers_sys_weather_assessments row for (game, system, T30)
+    // and returns a flat payload to be merged into audit reason_json.
+    // MUST NOT alter signal decisions, stake, or any side-effects.
+    // ---------------------------------------------------------------
+    async function loadPassiveWeatherAssessment(
+      sys: any,
+      game_id: string,
+    ): Promise<Record<string, any>> {
+      const weather_enabled = Boolean(sys?.weather_enabled);
+      const weather_policy_code = sys?.weather_policy_code ?? null;
+      const weather_assessment_stage = sys?.weather_gate_snapshot ?? "T30";
+
+      const base = {
+        weather_enabled,
+        weather_policy_code,
+        weather_assessment_stage,
+        weather_outcome: null as string | null,
+        weather_reason_code: null as string | null,
+        weather_wind_kmh_max: null as number | null,
+        weather_gust_kmh_max: null as number | null,
+        weather_rain_mm_total: null as number | null,
+        weather_snapshot_id: null as string | null,
+        weather_assessed_at: null as string | null,
+        weather_status: "NOT_ENABLED" as
+          | "FOUND"
+          | "NOT_FOUND"
+          | "NOT_ENABLED"
+          | "NOT_APPLICABLE"
+          | "ERROR",
+      };
+
+      if (!weather_enabled) return base;
+
+      try {
+        const { data, error } = await supabase
+          .from("pers_sys_weather_assessments")
+          .select(
+            "outcome, reason_code, wind_kmh_max, gust_kmh_max, rain_mm_total, snapshot_id, assessed_at",
+          )
+          .eq("game_id", game_id)
+          .eq("system_code", String(sys.system_code))
+          .eq("assessment_stage", "T30")
+          .order("assessed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          return { ...base, weather_status: "ERROR", weather_reason_code: "read_error" };
+        }
+        if (!data) {
+          return { ...base, weather_status: "NOT_FOUND" };
+        }
+
+        const outcome = (data as any).outcome ?? null;
+        const status = outcome === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FOUND";
+
+        return {
+          ...base,
+          weather_outcome: outcome,
+          weather_reason_code: (data as any).reason_code ?? null,
+          weather_wind_kmh_max: (data as any).wind_kmh_max ?? null,
+          weather_gust_kmh_max: (data as any).gust_kmh_max ?? null,
+          weather_rain_mm_total: (data as any).rain_mm_total ?? null,
+          weather_snapshot_id: (data as any).snapshot_id ?? null,
+          weather_assessed_at: (data as any).assessed_at ?? null,
+          weather_status: status,
+        };
+      } catch (_e) {
+        return { ...base, weather_status: "ERROR", weather_reason_code: "exception" };
+      }
+    }
+
     let signalsCreated = 0;
 
     for (const sysRaw of systemsSorted as any[]) {
@@ -1916,6 +1990,10 @@ Deno.serve(async (req) => {
         // READY vs PENDING vs SKIP (don't write FAILs)
         // -------------------------
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
+
+        // Phase 2A: passive weather visibility (read-only; never affects decisions).
+        const passiveWeather = await loadPassiveWeatherAssessment(sys, g.id);
+        reason.weather = passiveWeather;
 
         if (!modelPass || !primaryLeg) {
           await upsertAuditV2({

@@ -29,6 +29,8 @@ Deno.serve(async (req) => {
       typeof body.game_id === "string" && body.game_id.trim() ? body.game_id.trim() : null;
     const horizonDays = Number(body.horizon_days ?? 10);
     const season = Number(body.season ?? new Date().getFullYear());
+    const snapshotStage: string = typeof body.snapshot_stage === "string" && body.snapshot_stage.trim() ? body.snapshot_stage.trim() : "T30";
+    const assessmentStage: string = typeof body.assessment_stage === "string" && body.assessment_stage.trim() ? body.assessment_stage.trim() : "T30";
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -103,10 +105,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // One fetch per game (stage T30); same snapshot reused by all systems
+      // One fetch per game; same snapshot reused by all systems
       const fetched = await callFn("pers-sys-weather-fetch", {
         game_id: g.id,
-        snapshot_stage: "T30",
+        snapshot_stage: snapshotStage,
       });
       if (fetched.status !== 200 || !(fetched.json as any)?.ok) {
         counters.errors.push({ stage: "fetch", game_id: g.id, response: fetched.json });
@@ -121,7 +123,7 @@ Deno.serve(async (req) => {
         const assessed = await callFn("pers-sys-weather-assess", {
           game_id: g.id,
           system_code: code,
-          assessment_stage: "T30",
+          assessment_stage: assessmentStage,
         });
         if (assessed.status !== 200 || !(assessed.json as any)?.ok) {
           counters.errors.push({
@@ -142,6 +144,8 @@ Deno.serve(async (req) => {
         mode,
         season,
         horizon_days: horizonDays,
+        snapshot_stage: snapshotStage,
+        assessment_stage: assessmentStage,
         systems: systemCodes,
         ...counters,
       }),

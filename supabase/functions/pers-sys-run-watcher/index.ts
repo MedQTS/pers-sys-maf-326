@@ -48,6 +48,7 @@ function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{
   if (watchType === "T60") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T60" } },
+      { functionName: "pers-sys-weather-seed-precheck", payload: { mode: "PRECHECK_ONLY", game_id: gameId }, nonFatal: true },
       { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "PRECHECK_ONLY" } },
     ];
   }

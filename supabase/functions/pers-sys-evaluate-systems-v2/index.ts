@@ -891,6 +891,14 @@ Deno.serve(async (req) => {
         weather_active_would_change_stake: would_change_stake,
       };
     }
+    async function loadPassiveWeatherAssessmentWithActive(
+      sys: any,
+      game_id: string,
+    ): Promise<Record<string, any>> {
+      const shadow = await loadPassiveWeatherAssessment(sys, game_id);
+      const active_enabled = Boolean(sys?.weather_active_decisioning_enabled);
+      return computeWeatherActiveDecision(shadow, active_enabled);
+    }
 
     async function loadPassiveWeatherAssessment(
       sys: any,

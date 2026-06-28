@@ -74,10 +74,90 @@ const EXPECTED: Record<string, { action: string; suppress: boolean; halve: boole
   ERROR:          { action: "WEATHER_ERROR",         suppress: false, halve: false, full: false, reason: "read_error" },
 };
 
-Deno.serve((req) => {
+// Phase 4A: mirror of computeWeatherActiveDecision in pers-sys-evaluate-systems-v2.
+function computeWeatherActiveDecision(
+  payload: Record<string, any>,
+  active_enabled: boolean,
+): Record<string, any> {
+  if (!active_enabled) {
+    return {
+      ...payload,
+      weather_active_decisioning_enabled: false,
+      weather_active_action: "DISABLED",
+      weather_active_reason: "weather_active_decisioning_disabled",
+      weather_active_applied: false,
+      weather_active_would_change_signal: false,
+      weather_active_would_change_stake: false,
+    };
+  }
+  const status = payload.weather_status;
+  const outcome = payload.weather_outcome;
+  const reason = payload.weather_reason_code;
+  let action = "ACTIVE_NO_ACTION";
+  let action_reason: string | null = reason ?? null;
+  let would_change_signal = false;
+  let would_change_stake = false;
+  if (status === "NOT_ENABLED") {
+    action = "ACTIVE_NOT_ENABLED";
+    action_reason = "system_weather_not_enabled";
+  } else if (status === "ERROR") {
+    action = "ACTIVE_WEATHER_ERROR";
+    action_reason = reason ?? "weather_read_error";
+  } else if (status === "NOT_FOUND") {
+    action = "ACTIVE_WEATHER_NOT_FOUND";
+    action_reason = "missing_t30_weather_assessment";
+  } else if (status === "NOT_APPLICABLE" || outcome === "NOT_APPLICABLE") {
+    action = "ACTIVE_NO_ACTION";
+    action_reason = reason ?? "indoor_venue";
+  } else if (status === "FOUND") {
+    if (outcome === "PASS") {
+      action = "WOULD_ACTIVE_SUPPRESS";
+      action_reason = "active_weather_pass";
+      would_change_signal = true;
+    } else if (outcome === "HALF_STAKE") {
+      action = "WOULD_ACTIVE_HALF_STAKE";
+      action_reason = "active_weather_half_stake";
+      would_change_stake = true;
+    } else if (outcome === "FULL_STAKE") {
+      action = "WOULD_ACTIVE_KEEP_FULL_STAKE";
+    }
+  }
+  return {
+    ...payload,
+    weather_active_decisioning_enabled: true,
+    weather_active_action: action,
+    weather_active_reason: action_reason,
+    weather_active_applied: false,
+    weather_active_would_change_signal: would_change_signal,
+    weather_active_would_change_stake: would_change_stake,
+  };
+}
+
+const ACTIVE_EXPECTED: Record<string, string> = {
+  PASS: "WOULD_ACTIVE_SUPPRESS",
+  HALF_STAKE: "WOULD_ACTIVE_HALF_STAKE",
+  FULL_STAKE: "WOULD_ACTIVE_KEEP_FULL_STAKE",
+  NOT_APPLICABLE: "ACTIVE_NO_ACTION",
+  NOT_FOUND: "ACTIVE_WEATHER_NOT_FOUND",
+  NOT_ENABLED: "ACTIVE_NOT_ENABLED",
+  ERROR: "ACTIVE_WEATHER_ERROR",
+};
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const results = CASES.map(({ name, payload }) => {
+  let mode = "shadow";
+  try {
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      if (body && typeof body.mode === "string") mode = body.mode;
+    } else {
+      const url = new URL(req.url);
+      mode = url.searchParams.get("mode") ?? "shadow";
+    }
+  } catch (_e) { /* ignore */ }
+
+  const shadowResults = CASES.map(({ name, payload }) => {
     const out = computeWeatherShadow(payload);
     const exp = EXPECTED[name];
     const pass =
@@ -90,16 +170,43 @@ Deno.serve((req) => {
     return { case: name, pass, expected: exp, actual: out };
   });
 
-  const all_pass = results.every((r) => r.pass);
+  const activeDisabled = CASES.map(({ name, payload }) => {
+    const s = computeWeatherShadow(payload);
+    const out = computeWeatherActiveDecision(s, false);
+    const pass =
+      out.weather_active_decisioning_enabled === false &&
+      out.weather_active_action === "DISABLED" &&
+      out.weather_active_applied === false &&
+      out.weather_active_would_change_signal === false &&
+      out.weather_active_would_change_stake === false;
+    return { case: name, pass, actual_action: out.weather_active_action };
+  });
+
+  const activeEnabled = CASES.map(({ name, payload }) => {
+    const s = computeWeatherShadow(payload);
+    const out = computeWeatherActiveDecision(s, true);
+    const pass = out.weather_active_action === ACTIVE_EXPECTED[name] &&
+      out.weather_active_applied === false;
+    return { case: name, pass, expected_action: ACTIVE_EXPECTED[name], actual_action: out.weather_active_action, would_change_signal: out.weather_active_would_change_signal, would_change_stake: out.weather_active_would_change_stake };
+  });
+
+  const all_pass =
+    shadowResults.every((r) => r.pass) &&
+    activeDisabled.every((r) => r.pass) &&
+    activeEnabled.every((r) => r.pass);
 
   return new Response(
     JSON.stringify({
       ok: true,
       diagnostic_only: true,
       db_writes: false,
+      mode,
       all_pass,
-      results,
+      shadow: shadowResults,
+      active_disabled: activeDisabled,
+      active_enabled: activeEnabled,
     }, null, 2),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });
+

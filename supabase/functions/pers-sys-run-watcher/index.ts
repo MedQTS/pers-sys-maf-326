@@ -42,7 +42,7 @@ async function callEdgeFunction(args: {
   };
 }
 
-function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{ functionName: string; payload: Record<string, unknown> }> {
+function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{ functionName: string; payload: Record<string, unknown>; nonFatal?: boolean }> {
   if (!gameId) return [];
 
   if (watchType === "T60") {

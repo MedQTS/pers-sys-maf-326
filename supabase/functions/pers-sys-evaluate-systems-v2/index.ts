@@ -2386,7 +2386,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: signalsCreated }), {
+    return new Response(JSON.stringify({ ok: true, season, evaluator_mode: evaluatorMode, signals_created: signalsCreated, weather_active_dry_run_override: dryRunOverrideActive, weather_active_dry_run_override_rejected: dryRunOverrideRejectedReason, weather_active_dry_run_system_codes: Array.from(dryRunOverrideSystems) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

@@ -2212,8 +2212,24 @@ Deno.serve(async (req) => {
         // -------------------------
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
-        // Phase 2A: passive weather visibility (read-only; never affects decisions).
-        const passiveWeather = await loadPassiveWeatherAssessmentWithActive(sys, g.id);
+        // Phase 2A passive load + Phase 4D dry-run override.
+        const dryRunAppliesToThisSystem =
+          dryRunOverrideActive &&
+          (dryRunOverrideSystems.size === 0 || dryRunOverrideSystems.has(system_code));
+        const effectiveActiveEnabled =
+          Boolean(sys?.weather_active_decisioning_enabled) || dryRunAppliesToThisSystem;
+        const passiveShadow = await loadPassiveWeatherAssessment(sys, g.id);
+        const passiveWeather = {
+          ...computeWeatherActiveDecision(passiveShadow, effectiveActiveEnabled),
+          weather_active_decisioning_enabled_effective: effectiveActiveEnabled,
+          weather_active_decisioning_enabled_source: dryRunAppliesToThisSystem
+            ? "dry_run_override"
+            : Boolean(sys?.weather_active_decisioning_enabled)
+              ? "production_flag"
+              : "disabled",
+          weather_active_dry_run_override: dryRunAppliesToThisSystem,
+          weather_active_dry_run_reason: dryRunAppliesToThisSystem ? dryRunOverrideReason : null,
+        };
         reason.weather = passiveWeather;
 
         if (!modelPass || !primaryLeg) {

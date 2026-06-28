@@ -286,10 +286,33 @@ Deno.serve(async (req) => {
     return { case: name, pass, expected_action: ACTIVE_EXPECTED[name], actual_action: out.weather_active_action, would_change_signal: out.weather_active_would_change_signal, would_change_stake: out.weather_active_would_change_stake };
   });
 
+  const candidateResults = CANDIDATE_EXPECTATIONS.map((exp) => {
+    const payload = findCasePayload(exp.case_name);
+    const shadow = computeWeatherShadow(payload);
+    const decision = computeWeatherActiveDecision(shadow, exp.enabled);
+    const before = makeCandidate(exp.starting_stake);
+    const after = applyActiveDecisionToCandidate(before, decision);
+    const pass =
+      after.candidate_status === exp.expected_status &&
+      after.stake_units === exp.expected_stake &&
+      after.blocked_by_weather === exp.expected_blocked &&
+      after.weather_active_action === exp.expected_action &&
+      after.weather_active_applied === exp.expected_applied;
+    return {
+      enabled: exp.enabled,
+      case: exp.case_name,
+      pass,
+      before,
+      after,
+      expected: exp,
+    };
+  });
+
   const all_pass =
     shadowResults.every((r) => r.pass) &&
     activeDisabled.every((r) => r.pass) &&
-    activeEnabled.every((r) => r.pass);
+    activeEnabled.every((r) => r.pass) &&
+    candidateResults.every((r) => r.pass);
 
   return new Response(
     JSON.stringify({
@@ -301,6 +324,8 @@ Deno.serve(async (req) => {
       shadow: shadowResults,
       active_disabled: activeDisabled,
       active_enabled: activeEnabled,
+      active_candidate_mutation: candidateResults,
+      full_stake_applied_convention: "no_op_applied_false",
     }, null, 2),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );

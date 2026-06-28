@@ -1991,6 +1991,10 @@ Deno.serve(async (req) => {
         // -------------------------
         const primaryLeg = (reason.legs?.[0] ?? null) as any;
 
+        // Phase 2A: passive weather visibility (read-only; never affects decisions).
+        const passiveWeather = await loadPassiveWeatherAssessment(sys, g.id);
+        reason.weather = passiveWeather;
+
         if (!modelPass || !primaryLeg) {
           await upsertAuditV2({
             system_code,

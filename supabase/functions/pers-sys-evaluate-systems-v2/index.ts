@@ -891,6 +891,67 @@ Deno.serve(async (req) => {
         weather_active_would_change_stake: would_change_stake,
       };
     }
+
+    // ---------------------------------------------------------------
+    // Phase 4C: Apply active weather decision to candidate flow.
+    // Guarded by sys.weather_active_decisioning_enabled. When false
+    // (the default for ALL production systems), this helper returns
+    // the candidate unchanged. When true, PASS suppresses the
+    // candidate (signalStatus -> WEATHER_SUPPRESSED), HALF_STAKE
+    // halves recommended units/pct, FULL_STAKE and NOT_APPLICABLE /
+    // NOT_FOUND / ERROR preserve the candidate.
+    // ---------------------------------------------------------------
+    type WeatherCandidate = {
+      signalStatus: string;
+      recommendedUnits: number | null;
+      recommendedBankrollPct: number | null;
+    };
+    function applyWeatherActiveDecisionToCandidate(
+      candidate: WeatherCandidate,
+      weatherPayload: Record<string, any>,
+    ): { candidate: WeatherCandidate; audit: Record<string, any> } {
+      const enabled = Boolean(weatherPayload?.weather_active_decisioning_enabled);
+      const action = weatherPayload?.weather_active_action ?? "DISABLED";
+      const reason = weatherPayload?.weather_active_reason ?? null;
+
+      // Default: candidate unchanged, applied=false.
+      const audit = {
+        weather_active_decisioning_enabled: enabled,
+        weather_active_action: action,
+        weather_active_reason: reason,
+        weather_active_applied: false,
+        weather_active_would_change_signal: Boolean(weatherPayload?.weather_active_would_change_signal),
+        weather_active_would_change_stake: Boolean(weatherPayload?.weather_active_would_change_stake),
+      };
+
+      if (!enabled) return { candidate, audit };
+
+      // Never act on missing/error/non-applicable/not-enabled.
+      const status = weatherPayload?.weather_status;
+      if (status !== "FOUND") return { candidate, audit };
+
+      const outcome = weatherPayload?.weather_outcome;
+      const next: WeatherCandidate = { ...candidate };
+
+      if (outcome === "PASS") {
+        next.signalStatus = "WEATHER_SUPPRESSED";
+        audit.weather_active_applied = true;
+        return { candidate: next, audit };
+      }
+      if (outcome === "HALF_STAKE") {
+        if (typeof next.recommendedUnits === "number") {
+          next.recommendedUnits = Math.round(next.recommendedUnits * 0.5 * 4) / 4;
+        }
+        if (typeof next.recommendedBankrollPct === "number") {
+          next.recommendedBankrollPct = Number((next.recommendedBankrollPct * 0.5).toFixed(6));
+        }
+        audit.weather_active_applied = true;
+        return { candidate: next, audit };
+      }
+      // FULL_STAKE: no-op.
+      return { candidate, audit };
+    }
+
     async function loadPassiveWeatherAssessmentWithActive(
       sys: any,
       game_id: string,

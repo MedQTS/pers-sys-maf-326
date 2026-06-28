@@ -430,6 +430,34 @@ Deno.serve(async (req) => {
         ? body.game_id.trim()
         : null;
 
+    // Phase 4D: dry-run override for active weather decisioning.
+    // Honored ONLY in PRECHECK_ONLY mode (non-signal-writing).
+    // Never enables production flags or writes signals/bets/alerts.
+    const dryRunOverrideRequested = body.weather_active_dry_run_override === true;
+    const dryRunOverrideReason =
+      typeof body.weather_active_dry_run_reason === "string"
+        ? body.weather_active_dry_run_reason.trim()
+        : "";
+    const dryRunOverrideSystems: Set<string> = new Set(
+      Array.isArray(body.weather_active_dry_run_system_codes)
+        ? body.weather_active_dry_run_system_codes
+            .filter((s: unknown) => typeof s === "string")
+            .map((s: string) => s.trim().toUpperCase())
+            .filter(Boolean)
+        : [],
+    );
+    let dryRunOverrideActive = false;
+    let dryRunOverrideRejectedReason: string | null = null;
+    if (dryRunOverrideRequested) {
+      if (evaluatorMode !== "PRECHECK_ONLY") {
+        dryRunOverrideRejectedReason = "unsafe_mode_requires_PRECHECK_ONLY";
+      } else if (!dryRunOverrideReason) {
+        dryRunOverrideRejectedReason = "missing_weather_active_dry_run_reason";
+      } else {
+        dryRunOverrideActive = true;
+      }
+    }
+
     const now = new Date();
     const startIso = now.toISOString();
     const endIso = new Date(now.getTime() + horizonDays * 24 * 60 * 60 * 1000).toISOString();

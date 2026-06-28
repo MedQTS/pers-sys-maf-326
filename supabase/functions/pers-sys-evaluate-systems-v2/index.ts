@@ -802,7 +802,7 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase
           .from("pers_sys_weather_assessments")
           .select(
-            "outcome, reason_code, wind_kmh_max, gust_kmh_max, rain_mm_total, snapshot_id, assessed_at",
+            "outcome, reason_code, wind_kmh_max, gust_kmh_max, rain_mm_total, weather_snapshot_id, assessed_at",
           )
           .eq("game_id", game_id)
           .eq("system_code", String(sys.system_code))

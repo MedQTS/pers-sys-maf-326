@@ -933,6 +933,9 @@ export type Database = {
           system_priority: number | null
           updated_at: string | null
           venue_states_allowed: string[] | null
+          weather_enabled: boolean
+          weather_gate_snapshot: string | null
+          weather_policy_code: string | null
         }
         Insert: {
           active?: boolean | null
@@ -987,6 +990,9 @@ export type Database = {
           system_priority?: number | null
           updated_at?: string | null
           venue_states_allowed?: string[] | null
+          weather_enabled?: boolean
+          weather_gate_snapshot?: string | null
+          weather_policy_code?: string | null
         }
         Update: {
           active?: boolean | null
@@ -1041,6 +1047,9 @@ export type Database = {
           system_priority?: number | null
           updated_at?: string | null
           venue_states_allowed?: string[] | null
+          weather_enabled?: boolean
+          weather_gate_snapshot?: string | null
+          weather_policy_code?: string | null
         }
         Relationships: []
       }
@@ -1149,6 +1158,38 @@ export type Database = {
         }
         Relationships: []
       }
+      pers_sys_venue_aliases: {
+        Row: {
+          created_at: string
+          raw_venue: string
+          raw_venue_norm: string
+          updated_at: string
+          venue_code: string
+        }
+        Insert: {
+          created_at?: string
+          raw_venue: string
+          raw_venue_norm: string
+          updated_at?: string
+          venue_code: string
+        }
+        Update: {
+          created_at?: string
+          raw_venue?: string
+          raw_venue_norm?: string
+          updated_at?: string
+          venue_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_venue_aliases_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_venues"
+            referencedColumns: ["venue_code"]
+          },
+        ]
+      }
       pers_sys_venue_state: {
         Row: {
           state: string
@@ -1164,6 +1205,42 @@ export type Database = {
           state?: string
           venue_key?: string
           venue_name?: string
+        }
+        Relationships: []
+      }
+      pers_sys_venues: {
+        Row: {
+          active: boolean
+          created_at: string
+          display_name: string
+          is_outdoor: boolean
+          latitude: number
+          longitude: number
+          match_duration_minutes: number
+          updated_at: string
+          venue_code: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          display_name: string
+          is_outdoor: boolean
+          latitude: number
+          longitude: number
+          match_duration_minutes?: number
+          updated_at?: string
+          venue_code: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          display_name?: string
+          is_outdoor?: boolean
+          latitude?: number
+          longitude?: number
+          match_duration_minutes?: number
+          updated_at?: string
+          venue_code?: string
         }
         Relationships: []
       }
@@ -1205,6 +1282,144 @@ export type Database = {
           watch_type?: string
         }
         Relationships: []
+      }
+      pers_sys_weather_assessments: {
+        Row: {
+          assessed_at: string
+          assessment_stage: string
+          created_at: string
+          game_id: string
+          gust_kmh_max: number | null
+          id: string
+          outcome: string
+          policy_code: string
+          rain_mm_total: number | null
+          reason_code: string | null
+          system_code: string
+          updated_at: string
+          weather_snapshot_id: string | null
+          wind_kmh_max: number | null
+        }
+        Insert: {
+          assessed_at?: string
+          assessment_stage: string
+          created_at?: string
+          game_id: string
+          gust_kmh_max?: number | null
+          id?: string
+          outcome: string
+          policy_code: string
+          rain_mm_total?: number | null
+          reason_code?: string | null
+          system_code: string
+          updated_at?: string
+          weather_snapshot_id?: string | null
+          wind_kmh_max?: number | null
+        }
+        Update: {
+          assessed_at?: string
+          assessment_stage?: string
+          created_at?: string
+          game_id?: string
+          gust_kmh_max?: number | null
+          id?: string
+          outcome?: string
+          policy_code?: string
+          rain_mm_total?: number | null
+          reason_code?: string | null
+          system_code?: string
+          updated_at?: string
+          weather_snapshot_id?: string | null
+          wind_kmh_max?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_weather_assessments_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_weather_assessments_weather_snapshot_id_fkey"
+            columns: ["weather_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_weather_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pers_sys_weather_snapshots: {
+        Row: {
+          checked_at: string
+          created_at: string
+          game_id: string
+          gust_kmh_max: number | null
+          hours_matched: number | null
+          id: string
+          is_outdoor: boolean | null
+          rain_mm_total: number | null
+          raw_payload: Json | null
+          snapshot_stage: string
+          source: string
+          updated_at: string
+          venue_code: string | null
+          wind_kmh_max: number | null
+          window_end_utc: string
+          window_start_utc: string
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          game_id: string
+          gust_kmh_max?: number | null
+          hours_matched?: number | null
+          id?: string
+          is_outdoor?: boolean | null
+          rain_mm_total?: number | null
+          raw_payload?: Json | null
+          snapshot_stage: string
+          source?: string
+          updated_at?: string
+          venue_code?: string | null
+          wind_kmh_max?: number | null
+          window_end_utc: string
+          window_start_utc: string
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          game_id?: string
+          gust_kmh_max?: number | null
+          hours_matched?: number | null
+          id?: string
+          is_outdoor?: boolean | null
+          rain_mm_total?: number | null
+          raw_payload?: Json | null
+          snapshot_stage?: string
+          source?: string
+          updated_at?: string
+          venue_code?: string | null
+          wind_kmh_max?: number | null
+          window_end_utc?: string
+          window_start_utc?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pers_sys_weather_snapshots_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pers_sys_weather_snapshots_venue_code_fkey"
+            columns: ["venue_code"]
+            isOneToOne: false
+            referencedRelation: "pers_sys_venues"
+            referencedColumns: ["venue_code"]
+          },
+        ]
       }
     }
     Views: {

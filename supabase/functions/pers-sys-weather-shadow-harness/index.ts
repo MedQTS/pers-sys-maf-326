@@ -143,6 +143,102 @@ const ACTIVE_EXPECTED: Record<string, string> = {
   ERROR: "ACTIVE_WEATHER_ERROR",
 };
 
+// Phase 4B: diagnostic-only active-candidate mutation harness.
+// Mutates an in-memory candidate object based on the active decision.
+// Never touches the database. Never invoked by production evaluator.
+type DiagCandidate = {
+  candidate_status: string;
+  stake_units: number | null;
+  blocked_by_weather: boolean;
+  weather_active_action: string | null;
+  weather_active_applied: boolean;
+  weather_active_reason: string | null;
+};
+
+function makeCandidate(stake_units: number | null = 1.0): DiagCandidate {
+  return {
+    candidate_status: "ELIGIBLE",
+    stake_units,
+    blocked_by_weather: false,
+    weather_active_action: null,
+    weather_active_applied: false,
+    weather_active_reason: null,
+  };
+}
+
+function applyActiveDecisionToCandidate(
+  candidate: DiagCandidate,
+  decision: Record<string, any>,
+): DiagCandidate {
+  const next: DiagCandidate = { ...candidate };
+  const action = decision.weather_active_action as string;
+  const reason = (decision.weather_active_reason as string | null) ?? null;
+  next.weather_active_action = action;
+  next.weather_active_reason = reason;
+
+  if (decision.weather_active_decisioning_enabled === false) {
+    // Disabled: candidate unchanged. Action is DISABLED.
+    next.weather_active_applied = false;
+    return next;
+  }
+
+  switch (action) {
+    case "WOULD_ACTIVE_SUPPRESS":
+      next.candidate_status = "BLOCKED_BY_WEATHER";
+      next.blocked_by_weather = true;
+      next.weather_active_applied = true;
+      break;
+    case "WOULD_ACTIVE_HALF_STAKE":
+      if (typeof next.stake_units === "number") {
+        next.stake_units = next.stake_units * 0.5;
+      }
+      next.weather_active_applied = true;
+      break;
+    case "WOULD_ACTIVE_KEEP_FULL_STAKE":
+      // Convention: full-stake is a no-op; applied=false.
+      next.weather_active_applied = false;
+      break;
+    case "ACTIVE_NO_ACTION":
+    case "ACTIVE_WEATHER_NOT_FOUND":
+    case "ACTIVE_WEATHER_ERROR":
+    case "ACTIVE_NOT_ENABLED":
+    default:
+      next.weather_active_applied = false;
+      break;
+  }
+  return next;
+}
+
+type CandidateExpectation = {
+  enabled: boolean;
+  case_name: string;
+  starting_stake: number | null;
+  expected_status: string;
+  expected_stake: number | null;
+  expected_blocked: boolean;
+  expected_action: string;
+  expected_applied: boolean;
+};
+
+const CANDIDATE_EXPECTATIONS: CandidateExpectation[] = [
+  // Disabled flag: candidate must not change regardless of outcome.
+  { enabled: false, case_name: "PASS", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "DISABLED", expected_applied: false },
+  { enabled: false, case_name: "HALF_STAKE", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "DISABLED", expected_applied: false },
+  { enabled: false, case_name: "NOT_FOUND", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "DISABLED", expected_applied: false },
+  // Active enabled cases.
+  { enabled: true, case_name: "PASS", starting_stake: 1.0, expected_status: "BLOCKED_BY_WEATHER", expected_stake: 1.0, expected_blocked: true, expected_action: "WOULD_ACTIVE_SUPPRESS", expected_applied: true },
+  { enabled: true, case_name: "HALF_STAKE", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 0.5, expected_blocked: false, expected_action: "WOULD_ACTIVE_HALF_STAKE", expected_applied: true },
+  { enabled: true, case_name: "FULL_STAKE", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "WOULD_ACTIVE_KEEP_FULL_STAKE", expected_applied: false },
+  { enabled: true, case_name: "NOT_APPLICABLE", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "ACTIVE_NO_ACTION", expected_applied: false },
+  { enabled: true, case_name: "NOT_FOUND", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "ACTIVE_WEATHER_NOT_FOUND", expected_applied: false },
+  { enabled: true, case_name: "ERROR", starting_stake: 1.0, expected_status: "ELIGIBLE", expected_stake: 1.0, expected_blocked: false, expected_action: "ACTIVE_WEATHER_ERROR", expected_applied: false },
+];
+
+function findCasePayload(name: string): Record<string, any> {
+  const c = CASES.find((x) => x.name === name);
+  return c ? c.payload : {};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 

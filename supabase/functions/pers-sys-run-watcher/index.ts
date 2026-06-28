@@ -55,6 +55,7 @@ function buildDownstreamSteps(watchType: string, gameId: string | null): Array<{
   if (watchType === "T30") {
     return [
       { functionName: "pers-sys-pull-odds-snapshot", payload: { game_id: gameId, snapshot_type: "T30" } },
+      { functionName: "pers-sys-weather-seed-precheck", payload: { mode: "PRECHECK_ONLY", game_id: gameId, snapshot_stage: "T30", assessment_stage: "T30" }, nonFatal: true },
       { functionName: "pers-sys-evaluate-systems-v2", payload: { game_id: gameId, evaluator_mode: "ACTION_T30" } },
       { functionName: "pers-sys-send-t30-alert", payload: { game_id: gameId } },
     ];

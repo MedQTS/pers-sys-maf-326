@@ -769,6 +769,56 @@ Deno.serve(async (req) => {
     // and returns a flat payload to be merged into audit reason_json.
     // MUST NOT alter signal decisions, stake, or any side-effects.
     // ---------------------------------------------------------------
+    function computeWeatherShadow(payload: Record<string, any>): Record<string, any> {
+      const weather_enabled = Boolean(payload.weather_enabled);
+      const status = payload.weather_status;
+      const outcome = payload.weather_outcome;
+      const reason = payload.weather_reason_code;
+
+      let shadow_action = "NO_WEATHER_ACTION";
+      let shadow_reason: string | null = reason ?? null;
+      let would_suppress = false;
+      let would_halve = false;
+      let would_keep_full = false;
+
+      if (status === "NOT_ENABLED" || !weather_enabled) {
+        shadow_action = "WEATHER_NOT_ENABLED";
+        shadow_reason = "system_weather_not_enabled";
+      } else if (status === "ERROR") {
+        shadow_action = "WEATHER_ERROR";
+        shadow_reason = reason ?? "weather_read_error";
+      } else if (status === "NOT_FOUND") {
+        shadow_action = "WEATHER_NOT_FOUND";
+        shadow_reason = "missing_t30_weather_assessment";
+      } else if (status === "NOT_APPLICABLE" || outcome === "NOT_APPLICABLE") {
+        shadow_action = "NO_WEATHER_ACTION";
+        shadow_reason = reason ?? "indoor_venue";
+      } else if (status === "FOUND") {
+        if (outcome === "PASS") {
+          shadow_action = "WOULD_SUPPRESS_SIGNAL";
+          would_suppress = true;
+        } else if (outcome === "HALF_STAKE") {
+          shadow_action = "WOULD_HALF_STAKE";
+          would_halve = true;
+        } else if (outcome === "FULL_STAKE") {
+          shadow_action = "WOULD_KEEP_FULL_STAKE";
+          would_keep_full = true;
+        }
+        shadow_reason = reason ?? null;
+      }
+
+      return {
+        ...payload,
+        weather_shadow_enabled: weather_enabled,
+        weather_shadow_action: shadow_action,
+        weather_shadow_reason: shadow_reason,
+        weather_shadow_would_suppress: would_suppress,
+        weather_shadow_would_halve_stake: would_halve,
+        weather_shadow_would_keep_full_stake: would_keep_full,
+        weather_shadow_applied: false,
+      };
+    }
+
     async function loadPassiveWeatherAssessment(
       sys: any,
       game_id: string,
@@ -796,7 +846,7 @@ Deno.serve(async (req) => {
           | "ERROR",
       };
 
-      if (!weather_enabled) return base;
+      if (!weather_enabled) return computeWeatherShadow(base);
 
       try {
         const { data, error } = await supabase
@@ -812,16 +862,16 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (error) {
-          return { ...base, weather_status: "ERROR", weather_reason_code: "read_error" };
+          return computeWeatherShadow({ ...base, weather_status: "ERROR", weather_reason_code: "read_error" });
         }
         if (!data) {
-          return { ...base, weather_status: "NOT_FOUND" };
+          return computeWeatherShadow({ ...base, weather_status: "NOT_FOUND" });
         }
 
         const outcome = (data as any).outcome ?? null;
         const status = outcome === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FOUND";
 
-        return {
+        return computeWeatherShadow({
           ...base,
           weather_outcome: outcome,
           weather_reason_code: (data as any).reason_code ?? null,
@@ -831,11 +881,12 @@ Deno.serve(async (req) => {
           weather_snapshot_id: (data as any).weather_snapshot_id ?? null,
           weather_assessed_at: (data as any).assessed_at ?? null,
           weather_status: status,
-        };
+        });
       } catch (_e) {
-        return { ...base, weather_status: "ERROR", weather_reason_code: "exception" };
+        return computeWeatherShadow({ ...base, weather_status: "ERROR", weather_reason_code: "exception" });
       }
     }
+
 
     let signalsCreated = 0;
 

@@ -569,9 +569,11 @@ Deno.serve(async (req) => {
       ? `<ul style="margin:4px 0 0 18px;padding:0;">${candidates.map(renderLegHtml).join("")}</ul>`
       : "<p style='color:#666;'>None.</p>";
 
+    const fadeLookup = buildFadeLookup(candidates);
+
     const optsHtml = (label: string, list: RenderedOption[]) =>
       list.length
-        ? `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3>${list.map((r) => renderOptionHtml(r, budgetSupplied)).join("")}`
+        ? `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3>${list.map((r) => renderOptionHtml(r, budgetSupplied, fadeLookup)).join("")}`
         : `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3><p style='color:#666;'>None.</p>`;
 
     const budgetBlockHtml = budgetSupplied
@@ -613,7 +615,7 @@ Deno.serve(async (req) => {
 
     const textOptsBlock = (label: string, list: RenderedOption[]) =>
       list.length
-        ? `${label}:\n${list.map((r) => renderOptionText(r, budgetSupplied)).join("\n\n")}`
+        ? `${label}:\n${list.map((r) => renderOptionText(r, budgetSupplied, fadeLookup)).join("\n\n")}`
         : `${label}:\n  None.`;
 
     const textPreview = [

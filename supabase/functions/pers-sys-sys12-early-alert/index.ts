@@ -1,15 +1,29 @@
-// SYS_12 Phase 3B — Early Basket Preview ALERT (DRY-RUN ONLY).
+// SYS_12 Phase 3B + 3C — Early Basket Preview Alert.
 //
-// Read-only renderer. Calls pers-sys-sys12-basket-preview (Phase 2A) over HTTP,
-// evaluates Phase 3A preconditions, applies Phase 2C-style relative stake
-// preview when a budget is supplied, and returns HTML+text email previews.
+// Default mode: dry-run renderer (Phase 3B). Calls pers-sys-sys12-basket-preview
+// (Phase 2A) over HTTP, evaluates preconditions, applies Phase 2C-style relative
+// stake preview when a budget is supplied, returns HTML+text email previews.
 //
-// HARD GUARANTEES (enforced by absence of code paths):
-// - No Postmark calls.
-// - No DB writes of any kind (no .insert / .update / .upsert / .delete / .rpc).
-// - No bet, signal, alert, or dedupe row creation.
-// - No SYS_10A inclusion. No weather references. No T30 trigger.
-// - dry_run defaults to true. dry_run:false is refused with a safe status.
+// Manual-send mode (Phase 3C): opt-in only.
+//   - dry_run === false AND send_confirm === "SYS_12_MANUAL_SEND".
+//   - Sends ONE Postmark email via the SYS_10A/T30 transport pattern.
+//   - Inserts ONE row into pers_sys_email_alert_runs for dedupe.
+//   - Rolls back the run row on Postmark failure.
+//
+// SYS_12 does NOT use weather. SYS_12 does NOT include SYS_10A legs.
+// No scheduler/cron/watcher/T30 hook. No bet/signal/stake/bet-log writes.
+// No accept/place/confirm flow. The ONLY DB write path is the dedupe row in
+// pers_sys_email_alert_runs (Phase 3C confirmed send only).
+//
+// HARD GUARANTEES enforced by absence of code paths:
+// - No writes to pers_sys_email_alert_items
+// - No writes to pers_sys_bets
+// - No writes to pers_sys_signals_v2
+// - No writes to pers_sys_signal_audit_v2
+// - No calls to preview_leg_stake or accept_leg_create_bet
+// - No weather-* function calls or SYS_10A inclusion
+
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,14 +31,23 @@ const corsHeaders = {
 };
 
 const PHASE_2A_FUNCTION = "pers-sys-sys12-basket-preview";
+const DEDUPE_SNAPSHOT_TYPE = "SYS12_EARLY";
+const MANUAL_SEND_CONFIRMATION = "SYS_12_MANUAL_SEND";
+const POSTMARK_TAG = "sys12_early_basket";
 
 const BANNER =
   "SYS_12 alert is informational only. No bet has been created or logged. Track manually in spreadsheet if placed.";
 const T2_CAUTION =
   "CAUTION — contains Tier 2 reduced-exposure leg. Manual approval required.";
 const NO_BUDGET_COPY = "No preview budget supplied; stake suggestions omitted.";
-const STATUS_TEXT =
+const STATUS_TEXT_DRY =
   "SYS_12 Phase 3B dry-run alert preview only. No email, bet, signal, log, or alert record created.";
+const STATUS_TEXT_SENT =
+  "SYS_12 Phase 3C manual-send alert only. No bet, signal, stake record, or app bet log created.";
+
+const FOOTER_DRY_LINE = "No alert has been sent in Phase 3B dry-run mode.";
+const FOOTER_SENT_LINE = "This SYS_12 alert was manually sent by explicit request.";
+const FOOTER_NO_AUTO = "No automatic bet placement has occurred.";
 
 type Tier = "T1_GOLDEN" | "T2_NERVOUS" | string;
 
@@ -245,6 +268,55 @@ function renderExcludedText(exs: ExcludedGame[]): string {
   return exs.map((g) => `  - ${g.home_team} v ${g.away_team} — ${failLabel(g.fail_code)} [${g.audit_status}]`).join("\n");
 }
 
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function canonicalAlertPayload(args: {
+  scope: { season: number | null; round: number | null };
+  candidates: Leg[];
+  rendered: RenderedOption[];
+  budget: number | null;
+}): string {
+  const { scope, candidates, rendered, budget } = args;
+  const candSorted = [...candidates]
+    .map((l) => ({
+      game_id: l.game_id ?? "",
+      selection_team: l.selection_team ?? "",
+      fade_target_team: l.fade_target_team ?? "",
+      tier: l.selection_tier ?? "",
+      price: l.selected_price != null ? Number(l.selected_price).toFixed(2) : "",
+    }))
+    .sort((a, b) => a.game_id.localeCompare(b.game_id) || a.selection_team.localeCompare(b.selection_team));
+
+  const optsSorted = [...rendered]
+    .map((r) => ({
+      key: `${r.section}-${r.index}`,
+      combined: r.opt.combined_decimal_odds != null ? Number(r.opt.combined_decimal_odds).toFixed(2) : "",
+      legs: r.opt.legs.map((l) => `${l.game_id}:${l.selection_team}:${l.selection_tier}:${l.selected_price != null ? Number(l.selected_price).toFixed(2) : ""}`).sort(),
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  return JSON.stringify({
+    system_code: "SYS_12",
+    season: scope.season,
+    round: scope.round,
+    candidates: candSorted,
+    options: optsSorted,
+    budget: budget ?? null,
+  });
+}
+
+function pickDedupeGameId(candidates: Leg[]): string | null {
+  const ids = candidates.map((l) => l.game_id).filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) return null;
+  return ids.slice().sort()[0];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -263,28 +335,37 @@ Deno.serve(async (req) => {
     const round = body.round != null ? Number(body.round) : null;
     const includeFail = body.include_fail_diagnostics !== false; // default true
     const dryRun = body.dry_run === undefined ? true : body.dry_run === true;
+    const sendConfirm = typeof body.send_confirm === "string" ? body.send_confirm : "";
     const budgetRaw = body.budget;
     const budgetNum = budgetRaw != null && Number.isFinite(Number(budgetRaw)) ? Number(budgetRaw) : null;
     const budget = budgetNum != null && budgetNum > 0 ? budgetNum : null;
     const budgetSupplied = budget != null;
 
-    if (!dryRun) {
+    const zeroSE = { emails_sent: 0, db_writes: 0, signals_created: 0, bets_created: 0, alerts_logged: 0 };
+
+    // Phase 3C gate: dry_run=false requires explicit confirmation string.
+    if (!dryRun && sendConfirm !== MANUAL_SEND_CONFIRMATION) {
       return new Response(
         JSON.stringify({
           ok: false,
-          mode: "SYS_12_PHASE_3B_DRY_RUN_ALERT_ONLY",
+          mode: "SYS_12_PHASE_3C_MANUAL_SEND_ONLY",
           system_code: "SYS_12",
           dry_run: false,
           refused: true,
-          reason: "phase_3b_is_dry_run_only",
-          status_text: "SYS_12 Phase 3B does not send alerts. Re-invoke with dry_run:true (default) to receive a preview.",
-          side_effects: { emails_sent: 0, db_writes: 0, signals_created: 0, bets_created: 0, alerts_logged: 0 },
+          reason: "manual_send_confirmation_required",
+          status_text: `SYS_12 Phase 3C manual send requires send_confirm:"${MANUAL_SEND_CONFIRMATION}".`,
+          side_effects: zeroSE,
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Call Phase 2A read-only.
+    const sendMode = !dryRun; // Phase 3C confirmed manual send.
+    const responseMode = sendMode ? "SYS_12_PHASE_3C_MANUAL_SEND_ONLY" : "SYS_12_PHASE_3B_DRY_RUN_ALERT_ONLY";
+    const statusText = sendMode ? STATUS_TEXT_SENT : STATUS_TEXT_DRY;
+    const footerLine = sendMode ? FOOTER_SENT_LINE : FOOTER_DRY_LINE;
+
+    // Call Phase 2A read-only (always, for both modes).
     const reqBody: Record<string, unknown> = { include_fail_diagnostics: includeFail };
     if (season != null && Number.isFinite(season)) reqBody.season = season;
     if (round != null && Number.isFinite(round)) reqBody.round = round;
@@ -300,13 +381,13 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           ok: false,
-          mode: "SYS_12_PHASE_3B_DRY_RUN_ALERT_ONLY",
+          mode: responseMode,
           system_code: "SYS_12",
-          dry_run: true,
+          dry_run: !sendMode,
           error: "phase_2a_call_failed",
           upstream_status: upstream.status,
           upstream_response: preview,
-          side_effects: { emails_sent: 0, db_writes: 0, signals_created: 0, bets_created: 0, alerts_logged: 0 },
+          side_effects: zeroSE,
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -332,7 +413,7 @@ Deno.serve(async (req) => {
     const weightedOptions = rendered.filter((r) => r.weight > 0);
     const containsTier2 = rendered.some((r) => r.opt.contains_tier2);
     const allOptionsT2OrZero = rendered.length > 0 && rendered.every((r) => r.weight === 0);
-    const tier3InBasket = false; // Phase 2A excludes Tier 3 upstream; basket_options never contain Tier 3.
+    const tier3InBasket = false;
 
     const preconditions = {
       at_least_two_candidates: candidates.length >= 2,
@@ -386,10 +467,9 @@ Deno.serve(async (req) => {
       upstream_warnings: preview.warnings ?? [],
     };
 
-    const sideEffects = { emails_sent: 0, db_writes: 0, signals_created: 0, bets_created: 0, alerts_logged: 0 };
     const generatedAt = new Date().toISOString();
 
-    // Short-circuit when preconditions fail: return a "no alert" preview.
+    // Short-circuit when preconditions fail.
     if (!preconditionsPassed) {
       const failingKeys = Object.entries(preconditions).filter(([, v]) => !v).map(([k]) => k);
       const subject = `SYS_12 Early Basket Preview — ${candidateCount} candidate leg(s), ${viableBasketCount} viable basket(s)`;
@@ -397,39 +477,41 @@ Deno.serve(async (req) => {
         <div style="font-family:ui-monospace,Menlo,monospace;color:#111;">
           <p style="background:#fff7cc;border:1px solid #e0c200;padding:8px 10px;margin:0 0 8px 0;"><strong>${esc(BANNER)}</strong></p>
           <p>No SYS_12 early alert would be issued. Preconditions not met: ${esc(failingKeys.join(", "))}.</p>
-          <p style="color:#666;">Scope: season ${esc(scope.season)} round ${esc(scope.round)} · generated ${esc(generatedAt)} · dry_run=true</p>
-          <p style="color:#666;">${esc(STATUS_TEXT)}</p>
+          <p style="color:#666;">Scope: season ${esc(scope.season)} round ${esc(scope.round)} · generated ${esc(generatedAt)} · dry_run=${String(!sendMode)}</p>
+          <p style="color:#666;">${esc(statusText)}</p>
         </div>`;
       const noText = [
         BANNER,
         "",
         `No SYS_12 early alert would be issued. Preconditions not met: ${failingKeys.join(", ")}.`,
-        `Scope: season ${scope.season} round ${scope.round} · generated ${generatedAt} · dry_run=true`,
-        STATUS_TEXT,
+        `Scope: season ${scope.season} round ${scope.round} · generated ${generatedAt} · dry_run=${String(!sendMode)}`,
+        statusText,
       ].join("\n");
 
       return new Response(
         JSON.stringify({
           ok: true,
-          mode: "SYS_12_PHASE_3B_DRY_RUN_ALERT_ONLY",
+          mode: responseMode,
           system_code: "SYS_12",
-          dry_run: true,
+          dry_run: !sendMode,
+          sent: false,
           skipped: true,
+          duplicate: false,
           reason: "preconditions_failed",
           subject,
           html_preview: noHtml,
           text_preview: noText,
           decision,
           source_preview,
-          side_effects: sideEffects,
-          status_text: STATUS_TEXT,
+          side_effects: zeroSE,
+          status_text: statusText,
           generated_at: generatedAt,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Build the full dry-run preview.
+    // Build content (used by both dry-run and confirmed send).
     const subject = `SYS_12 Early Basket Preview — ${candidateCount} candidate leg(s), ${viableBasketCount} viable basket(s)`;
 
     const renderedTwo = rendered.filter((r) => r.section === "two_leg");
@@ -456,7 +538,7 @@ Deno.serve(async (req) => {
 
         <h3 style="margin:12px 0 4px 0;">1. Status</h3>
         <p style="margin:4px 0;">
-          Preview-only · season ${esc(scope.season)} · round ${esc(scope.round)} · generated ${esc(generatedAt)} · dry_run=true
+          Preview-only · season ${esc(scope.season)} · round ${esc(scope.round)} · generated ${esc(generatedAt)} · dry_run=${String(!sendMode)}
         </p>
         ${budgetBlockHtml}
 
@@ -476,9 +558,10 @@ Deno.serve(async (req) => {
         <ul style="margin:4px 0 0 18px;padding:0;color:#444;">
           <li>Place manually only if you choose.</li>
           <li>No app bet log has been created.</li>
-          <li>No alert has been sent in Phase 3B dry-run mode.</li>
+          <li>${esc(FOOTER_NO_AUTO)}</li>
+          <li>${esc(footerLine)}</li>
         </ul>
-        <p style="margin-top:10px;color:#666;font-size:12px;">${esc(STATUS_TEXT)}</p>
+        <p style="margin-top:10px;color:#666;font-size:12px;">${esc(statusText)}</p>
       </div>`;
 
     const textOptsBlock = (label: string, list: RenderedOption[]) =>
@@ -491,7 +574,7 @@ Deno.serve(async (req) => {
       BANNER,
       "",
       "1. Status",
-      `  Preview-only · season ${scope.season} · round ${scope.round} · generated ${generatedAt} · dry_run=true`,
+      `  Preview-only · season ${scope.season} · round ${scope.round} · generated ${generatedAt} · dry_run=${String(!sendMode)}`,
       budgetSupplied ? `  Preview budget: $${budget} (Phase 2C suggestions included)` : `  ${NO_BUDGET_COPY}`,
       "",
       `2. Candidate legs (${candidates.length})`,
@@ -510,26 +593,267 @@ Deno.serve(async (req) => {
       BANNER,
       "  - Place manually only if you choose.",
       "  - No app bet log has been created.",
-      "  - No alert has been sent in Phase 3B dry-run mode.",
+      `  - ${FOOTER_NO_AUTO}`,
+      `  - ${footerLine}`,
       "",
-      STATUS_TEXT,
+      statusText,
     ].join("\n");
+
+    // Dry-run response (Phase 3B default).
+    if (!sendMode) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          mode: responseMode,
+          system_code: "SYS_12",
+          dry_run: true,
+          sent: false,
+          skipped: false,
+          duplicate: false,
+          reason: null,
+          subject,
+          html_preview: htmlPreview,
+          text_preview: textPreview,
+          decision,
+          source_preview,
+          side_effects: zeroSE,
+          status_text: statusText,
+          generated_at: generatedAt,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // --- Phase 3C confirmed manual send path ---
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const postmarkToken = Deno.env.get("POSTMARK_SERVER_TOKEN") ?? "";
+    const fromEmail = Deno.env.get("POSTMARK_FROM_EMAIL") ?? "";
+    const toEmail = Deno.env.get("PERS_SYS_ALERT_TO_EMAIL") ?? "";
+    const messageStream = Deno.env.get("POSTMARK_MESSAGE_STREAM") ?? "";
+
+    if (!serviceRoleKey || !postmarkToken || !fromEmail || !toEmail || !messageStream) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: responseMode,
+          system_code: "SYS_12",
+          dry_run: false,
+          sent: false,
+          skipped: true,
+          duplicate: false,
+          reason: "missing_send_env",
+          missing: {
+            SUPABASE_SERVICE_ROLE_KEY: !serviceRoleKey,
+            POSTMARK_SERVER_TOKEN: !postmarkToken,
+            POSTMARK_FROM_EMAIL: !fromEmail,
+            PERS_SYS_ALERT_TO_EMAIL: !toEmail,
+            POSTMARK_MESSAGE_STREAM: !messageStream,
+          },
+          side_effects: zeroSE,
+          status_text: statusText,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const dedupeGameId = pickDedupeGameId(candidates);
+    if (!dedupeGameId) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: responseMode,
+          system_code: "SYS_12",
+          dry_run: false,
+          sent: false,
+          skipped: true,
+          duplicate: false,
+          reason: "no_candidate_game_id_for_dedupe",
+          side_effects: zeroSE,
+          status_text: statusText,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const canonical = canonicalAlertPayload({
+      scope: { season: scope.season, round: scope.round },
+      candidates,
+      rendered,
+      budget,
+    });
+    const alertHash = await sha256Hex(canonical);
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Pre-insert dedupe row (matches pers-sys-send-t30-alert pattern).
+    const { data: insertedRun, error: runInsertErr } = await supabase
+      .from("pers_sys_email_alert_runs")
+      .insert({
+        game_id: dedupeGameId,
+        snapshot_type: DEDUPE_SNAPSHOT_TYPE,
+        alert_hash: alertHash,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (runInsertErr) {
+      const code = (runInsertErr as { code?: string }).code ?? "";
+      if (code === "23505") {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            mode: responseMode,
+            system_code: "SYS_12",
+            dry_run: false,
+            sent: false,
+            skipped: true,
+            duplicate: true,
+            reason: "duplicate_alert_run",
+            subject,
+            decision,
+            dedupe: {
+              alert_hash: alertHash,
+              dedupe_game_id: dedupeGameId,
+              snapshot_type: DEDUPE_SNAPSHOT_TYPE,
+              inserted: false,
+              rolled_back: false,
+              duplicate: true,
+            },
+            side_effects: zeroSE,
+            status_text: statusText,
+            generated_at: generatedAt,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: responseMode,
+          system_code: "SYS_12",
+          dry_run: false,
+          sent: false,
+          skipped: true,
+          duplicate: false,
+          reason: "dedupe_insert_failed",
+          error: String(runInsertErr.message ?? runInsertErr),
+          side_effects: zeroSE,
+          status_text: statusText,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const runId = (insertedRun as { id?: string } | null)?.id ?? null;
+
+    // Postmark send (one email only).
+    let postmarkStatus = 0;
+    let postmarkParsed: unknown = null;
+    let postmarkOk = false;
+    try {
+      const postmarkRes = await fetch("https://api.postmarkapp.com/email", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Postmark-Server-Token": postmarkToken,
+        },
+        body: JSON.stringify({
+          From: fromEmail,
+          To: toEmail,
+          Subject: subject,
+          HtmlBody: htmlPreview,
+          TextBody: textPreview,
+          MessageStream: messageStream,
+          Tag: POSTMARK_TAG,
+        }),
+      });
+      postmarkStatus = postmarkRes.status;
+      const rawText = await postmarkRes.text();
+      try { postmarkParsed = JSON.parse(rawText); } catch { postmarkParsed = { raw: rawText }; }
+      postmarkOk = postmarkRes.ok;
+    } catch (e) {
+      postmarkOk = false;
+      postmarkParsed = { error: String(e) };
+    }
+
+    if (!postmarkOk) {
+      // Rollback dedupe row so the ledger remains truthful.
+      let rolledBack = false;
+      if (runId) {
+        const { error: delErr } = await supabase
+          .from("pers_sys_email_alert_runs")
+          .delete()
+          .eq("id", runId);
+        rolledBack = !delErr;
+      }
+      // Strip any potential token field defensively (Postmark never echoes it).
+      const safePostmark = { status: postmarkStatus, response: postmarkParsed };
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          mode: responseMode,
+          system_code: "SYS_12",
+          dry_run: false,
+          sent: false,
+          skipped: true,
+          duplicate: false,
+          reason: "postmark_send_failed",
+          subject,
+          decision,
+          postmark: safePostmark,
+          dedupe: {
+            alert_hash: alertHash,
+            dedupe_game_id: dedupeGameId,
+            snapshot_type: DEDUPE_SNAPSHOT_TYPE,
+            inserted: Boolean(runId),
+            rolled_back: rolledBack,
+            duplicate: false,
+          },
+          side_effects: { ...zeroSE },
+          status_text: statusText,
+          generated_at: generatedAt,
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     return new Response(
       JSON.stringify({
         ok: true,
-        mode: "SYS_12_PHASE_3B_DRY_RUN_ALERT_ONLY",
+        mode: responseMode,
         system_code: "SYS_12",
-        dry_run: true,
+        dry_run: false,
+        sent: true,
         skipped: false,
+        duplicate: false,
         reason: null,
         subject,
-        html_preview: htmlPreview,
-        text_preview: textPreview,
         decision,
-        source_preview,
-        side_effects: sideEffects,
-        status_text: STATUS_TEXT,
+        postmark: {
+          status: postmarkStatus,
+          response: postmarkParsed,
+          tag: POSTMARK_TAG,
+          message_stream: messageStream,
+        },
+        dedupe: {
+          alert_hash: alertHash,
+          dedupe_game_id: dedupeGameId,
+          snapshot_type: DEDUPE_SNAPSHOT_TYPE,
+          inserted: true,
+          rolled_back: false,
+          duplicate: false,
+        },
+        side_effects: {
+          emails_sent: 1,
+          db_writes: 1,
+          signals_created: 0,
+          bets_created: 0,
+          alerts_logged: 1,
+        },
+        status_text: statusText,
         generated_at: generatedAt,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

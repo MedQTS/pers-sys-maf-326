@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RunnerLayout from "@/components/RunnerLayout";
 import { supabase } from "@/integrations/supabase/client";
 
 const PHASE_2A_FUNCTION = "pers-sys-sys12-basket-preview";
+const DEFAULT_BUDGET = 200;
 
 type Tier = "T1_GOLDEN" | "T2_NERVOUS" | string;
 
@@ -78,6 +79,43 @@ const failLabel = (c: string | null | undefined) => {
 
 const PERMANENT_BANNER =
   "Preview only — no bet, stake, alert, signal, or basket placement is created.";
+const STAKE_SAFETY_COPY =
+  "Stake suggestions are preview-only. They do not create bets, signals, alerts, or logs.";
+const BUDGET_COPY =
+  "Round budget is editable. Suggestions scale from this value and do not create bets.";
+
+function baseWeight(legCount: number): number {
+  if (legCount === 3) return 3.0;
+  if (legCount === 2) return 2.0;
+  return 1.0;
+}
+
+function tierFactor(o: BasketOption): number {
+  if (!o.legs || o.legs.length === 0) return 0;
+  if (o.legs.some((l) => l.price_status !== "available")) return 0;
+  const tiers = o.legs.map((l) => l.selection_tier);
+  const allT1 = tiers.every((t) => t === "T1_GOLDEN");
+  const allT2 = tiers.every((t) => t === "T2_NERVOUS");
+  const hasT1 = tiers.some((t) => t === "T1_GOLDEN");
+  const hasT2 = tiers.some((t) => t === "T2_NERVOUS");
+  if (allT1) return 1.0;
+  if (allT2) return 0.0;
+  if (hasT1 && hasT2) return 0.5;
+  return 0.0;
+}
+
+function computeWeight(o: BasketOption): number {
+  return baseWeight(o.leg_count) * tierFactor(o);
+}
+
+function roundToNearest5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
+
+interface StakeInfo {
+  weight: number;
+  suggested: number | null; // null if no suggestion
+}
 
 export default function Sys12Basket() {
   const [season, setSeason] = useState<string>("");
@@ -86,6 +124,7 @@ export default function Sys12Basket() {
   const [err, setErr] = useState<string | null>(null);
   const [resp, setResp] = useState<PreviewResponse | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [budgetInput, setBudgetInput] = useState<string>(String(DEFAULT_BUDGET));
 
   async function load() {
     setLoading(true);
@@ -118,6 +157,55 @@ export default function Sys12Basket() {
   const candidates = resp?.candidate_legs ?? [];
   const excluded = resp?.excluded_games ?? [];
   const opts = resp?.basket_options ?? { two_leg: [], three_leg: [], trebles_from_four: [] };
+
+  const parsedBudget = (() => {
+    const n = Number(budgetInput);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return n;
+  })();
+  const budgetValid = parsedBudget > 0;
+
+  // Compute weights/stakes across ALL displayed basket options (all three sections).
+  const stakeMap = useMemo(() => {
+    const map = new Map<string, StakeInfo>();
+    const sections: Array<[string, BasketOption[]]> = [
+      ["two_leg", opts.two_leg ?? []],
+      ["three_leg", opts.three_leg ?? []],
+      ["trebles_from_four", opts.trebles_from_four ?? []],
+    ];
+    let totalWeight = 0;
+    const tmp: Array<{ key: string; weight: number }> = [];
+    for (const [section, list] of sections) {
+      list.forEach((o, i) => {
+        const w = computeWeight(o);
+        const key = `${section}-${i}`;
+        tmp.push({ key, weight: w });
+        totalWeight += w;
+      });
+    }
+    for (const { key, weight } of tmp) {
+      let suggested: number | null = null;
+      if (budgetValid && totalWeight > 0 && weight > 0) {
+        const raw = parsedBudget * (weight / totalWeight);
+        suggested = roundToNearest5(raw);
+      }
+      map.set(key, { weight, suggested });
+    }
+    return map;
+  }, [opts, parsedBudget, budgetValid]);
+
+  const allocationSummary = useMemo(() => {
+    let allocated = 0;
+    let positiveCount = 0;
+    for (const info of stakeMap.values()) {
+      if (info.suggested != null && info.suggested > 0) {
+        allocated += info.suggested;
+        positiveCount += 1;
+      }
+    }
+    const residual = budgetValid ? Math.max(0, parsedBudget - allocated) : 0;
+    return { allocated, positiveCount, residual };
+  }, [stakeMap, parsedBudget, budgetValid]);
 
   return (
     <RunnerLayout>
@@ -161,6 +249,39 @@ export default function Sys12Basket() {
 
         <div className="runner-card border-primary/40">
           <p className="text-xs font-mono text-primary">{PERMANENT_BANNER}</p>
+        </div>
+
+        {/* Editable round budget (Phase 2C) */}
+        <div className="runner-card space-y-2">
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="flex flex-col">
+              <label className="text-[10px] font-mono text-muted-foreground uppercase">
+                Round budget (preview $)
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                className="w-28 px-2 py-1 text-xs font-mono bg-secondary border border-border rounded"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setBudgetInput(String(DEFAULT_BUDGET))}
+              className="px-3 py-1.5 text-xs font-mono rounded bg-secondary text-foreground hover:bg-secondary/70 border border-border"
+            >
+              Reset to $200
+            </button>
+          </div>
+          <p className="text-[11px] font-mono text-muted-foreground">{BUDGET_COPY}</p>
+          {!budgetValid && (
+            <p className="text-[11px] font-mono text-amber-500">
+              Enter a numeric budget above zero to see suggestions.
+            </p>
+          )}
+          <p className="text-[10px] font-mono text-muted-foreground">{STAKE_SAFETY_COPY}</p>
         </div>
 
         {err && (
@@ -293,10 +414,47 @@ export default function Sys12Basket() {
           </section>
         )}
 
+        {/* Allocation summary (Phase 2C) */}
+        <div className="runner-card">
+          <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1">
+            Stake allocation summary (preview)
+          </div>
+          <div className="text-xs font-mono">
+            Allocated{" "}
+            <span className="text-foreground">${allocationSummary.allocated}</span> of{" "}
+            <span className="text-foreground">${budgetValid ? parsedBudget : 0}</span> preview budget
+            across <span className="text-foreground">{allocationSummary.positiveCount}</span> options.
+          </div>
+          {budgetValid && allocationSummary.residual > 0 && (
+            <div className="text-[11px] font-mono text-muted-foreground mt-1">
+              Some budget may remain unallocated due to rounding or caution rules.
+            </div>
+          )}
+          <div className="text-[10px] font-mono text-muted-foreground mt-1">{STAKE_SAFETY_COPY}</div>
+        </div>
+
         {/* Basket option sections */}
-        <BasketSection title="2-leg previews" options={opts.two_leg} emptyMsg="Insufficient SYS_12 candidates for this preview type." />
-        <BasketSection title="3-leg previews" options={opts.three_leg} emptyMsg="Insufficient SYS_12 candidates for this preview type." />
-        <BasketSection title="Trebles from four" options={opts.trebles_from_four} emptyMsg="Insufficient SYS_12 candidates for this preview type." />
+        <BasketSection
+          title="2-leg previews"
+          sectionKey="two_leg"
+          options={opts.two_leg}
+          stakeMap={stakeMap}
+          emptyMsg="Insufficient SYS_12 candidates for this preview type."
+        />
+        <BasketSection
+          title="3-leg previews"
+          sectionKey="three_leg"
+          options={opts.three_leg}
+          stakeMap={stakeMap}
+          emptyMsg="Insufficient SYS_12 candidates for this preview type."
+        />
+        <BasketSection
+          title="Trebles from four"
+          sectionKey="trebles_from_four"
+          options={opts.trebles_from_four}
+          stakeMap={stakeMap}
+          emptyMsg="Insufficient SYS_12 candidates for this preview type."
+        />
 
         {/* Raw diagnostics */}
         <section className="space-y-2">
@@ -322,11 +480,15 @@ export default function Sys12Basket() {
 
 function BasketSection({
   title,
+  sectionKey,
   options,
+  stakeMap,
   emptyMsg,
 }: {
   title: string;
+  sectionKey: string;
   options: BasketOption[];
+  stakeMap: Map<string, StakeInfo>;
   emptyMsg: string;
 }) {
   return (
@@ -340,6 +502,8 @@ function BasketSection({
         <div className="space-y-2">
           {options.map((o, i) => {
             const missingPrice = (o.warnings ?? []).includes("combined_odds_unavailable_price_missing");
+            const stake = stakeMap.get(`${sectionKey}-${i}`) ?? { weight: 0, suggested: null };
+            const hasSuggestion = stake.suggested != null && stake.suggested > 0;
             return (
               <div
                 key={`${o.option_type}-${i}`}
@@ -368,6 +532,28 @@ function BasketSection({
                     </li>
                   ))}
                 </ul>
+
+                {/* Phase 2C: relative stake preview */}
+                <div className="mt-1 mb-2 text-xs font-mono grid grid-cols-2 gap-2">
+                  <div>
+                    Relative weight:{" "}
+                    <span className="text-foreground">{stake.weight.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    Suggested preview stake:{" "}
+                    {hasSuggestion ? (
+                      <span className="text-foreground">${stake.suggested}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+                {!hasSuggestion && (
+                  <div className="text-[11px] font-mono text-muted-foreground mb-1">
+                    Manual review only — no stake suggestion.
+                  </div>
+                )}
+
                 {o.contains_tier2 && (
                   <div className="text-[11px] font-mono text-amber-500 mb-1">
                     CAUTION — contains Tier 2 reduced-exposure leg. Manual approval required.

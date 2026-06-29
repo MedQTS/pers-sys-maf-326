@@ -215,10 +215,53 @@ function renderLegText(l: Leg): string {
   return `  - ${l.home_team} v ${l.away_team} — Select ${l.selection_team} (fade ${l.fade_target_team ?? "—"}) · ${tierLabel(l.selection_tier)} · Price: ${l.selected_price != null ? `$${Number(l.selected_price).toFixed(2)}` : "—"} [${l.price_status}]${isT2 ? " · T2 caution" : ""}${warn}`;
 }
 
-function renderOptionHtml(r: RenderedOption, budgetSupplied: boolean): string {
+// Phase 3C.1 fix: basket option legs from Phase 2A do not carry fade_target_team.
+// Resolve the fade target by looking up the matching candidate leg (keyed by
+// game_id + selection_team, with game_id-only fallback) so basket lines mirror
+// the candidate-leg fade target instead of rendering "—".
+function buildFadeLookup(candidates: Leg[]): {
+  byGameAndTeam: Map<string, string>;
+  byGame: Map<string, string>;
+} {
+  const byGameAndTeam = new Map<string, string>();
+  const byGame = new Map<string, string>();
+  for (const c of candidates) {
+    const fade = c.fade_target_team ?? null;
+    if (!fade) continue;
+    if (c.game_id) {
+      if (c.selection_team) {
+        byGameAndTeam.set(`${c.game_id}|${c.selection_team}`, fade);
+      }
+      if (!byGame.has(c.game_id)) byGame.set(c.game_id, fade);
+    }
+  }
+  return { byGameAndTeam, byGame };
+}
+
+function resolveFadeTarget(
+  l: Leg,
+  lookup: { byGameAndTeam: Map<string, string>; byGame: Map<string, string> },
+): string {
+  if (l.fade_target_team) return l.fade_target_team;
+  if (l.game_id && l.selection_team) {
+    const hit = lookup.byGameAndTeam.get(`${l.game_id}|${l.selection_team}`);
+    if (hit) return hit;
+  }
+  if (l.game_id) {
+    const hit = lookup.byGame.get(l.game_id);
+    if (hit) return hit;
+  }
+  return "—";
+}
+
+function renderOptionHtml(
+  r: RenderedOption,
+  budgetSupplied: boolean,
+  fadeLookup: { byGameAndTeam: Map<string, string>; byGame: Map<string, string> },
+): string {
   const o = r.opt;
   const legs = o.legs.map((l) =>
-    `<li>${esc(l.selection_team)} <span style="color:#666;">(fade ${esc(l.fade_target_team ?? "—")}, ${esc(tierLabel(l.selection_tier))}, ${l.selected_price != null ? `$${Number(l.selected_price).toFixed(2)}` : "no price"})</span></li>`,
+    `<li>${esc(l.selection_team)} <span style="color:#666;">(fade ${esc(resolveFadeTarget(l, fadeLookup))}, ${esc(tierLabel(l.selection_tier))}, ${l.selected_price != null ? `$${Number(l.selected_price).toFixed(2)}` : "no price"})</span></li>`,
   ).join("");
   const combined = o.combined_decimal_odds != null ? `$${o.combined_decimal_odds.toFixed(2)}` : "—";
   const stakeLine = budgetSupplied
@@ -241,11 +284,15 @@ function renderOptionHtml(r: RenderedOption, budgetSupplied: boolean): string {
     </div>`;
 }
 
-function renderOptionText(r: RenderedOption, budgetSupplied: boolean): string {
+function renderOptionText(
+  r: RenderedOption,
+  budgetSupplied: boolean,
+  fadeLookup: { byGameAndTeam: Map<string, string>; byGame: Map<string, string> },
+): string {
   const o = r.opt;
   const head = `[${o.option_type}] ${o.leg_count} legs · Combined: ${o.combined_decimal_odds != null ? `$${o.combined_decimal_odds.toFixed(2)}` : "—"}`;
   const legs = o.legs.map((l) =>
-    `    - ${l.selection_team} (fade ${l.fade_target_team ?? "—"}, ${tierLabel(l.selection_tier)}, ${l.selected_price != null ? `$${Number(l.selected_price).toFixed(2)}` : "no price"})`,
+    `    - ${l.selection_team} (fade ${resolveFadeTarget(l, fadeLookup)}, ${tierLabel(l.selection_tier)}, ${l.selected_price != null ? `$${Number(l.selected_price).toFixed(2)}` : "no price"})`,
   ).join("\n");
   const stakeLine = budgetSupplied
     ? `    weight=${r.weight.toFixed(2)} · suggested=${r.suggested != null && r.suggested > 0 ? `$${r.suggested}` : "manual review only"}`
@@ -522,9 +569,11 @@ Deno.serve(async (req) => {
       ? `<ul style="margin:4px 0 0 18px;padding:0;">${candidates.map(renderLegHtml).join("")}</ul>`
       : "<p style='color:#666;'>None.</p>";
 
+    const fadeLookup = buildFadeLookup(candidates);
+
     const optsHtml = (label: string, list: RenderedOption[]) =>
       list.length
-        ? `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3>${list.map((r) => renderOptionHtml(r, budgetSupplied)).join("")}`
+        ? `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3>${list.map((r) => renderOptionHtml(r, budgetSupplied, fadeLookup)).join("")}`
         : `<h3 style="margin:14px 0 4px 0;">${esc(label)}</h3><p style='color:#666;'>None.</p>`;
 
     const budgetBlockHtml = budgetSupplied
@@ -566,7 +615,7 @@ Deno.serve(async (req) => {
 
     const textOptsBlock = (label: string, list: RenderedOption[]) =>
       list.length
-        ? `${label}:\n${list.map((r) => renderOptionText(r, budgetSupplied)).join("\n\n")}`
+        ? `${label}:\n${list.map((r) => renderOptionText(r, budgetSupplied, fadeLookup)).join("\n\n")}`
         : `${label}:\n  None.`;
 
     const textPreview = [

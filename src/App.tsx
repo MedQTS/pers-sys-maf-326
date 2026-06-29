@@ -8,6 +8,7 @@ import WeekView_v2 from "./pages/runner/WeekView_v2";
 import GameDetail from "./pages/runner/GameDetail";
 import BetsPage from "./pages/runner/BetsPage";
 import PerformancePage from "./pages/runner/PerformancePage";
+import Sys12Basket from "./pages/runner/Sys12Basket";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/runner/game/:id" element={<GameDetail />} />
           <Route path="/runner/bets" element={<BetsPage />} />
           <Route path="/runner/performance" element={<PerformancePage />} />
+          <Route path="/runner/sys12-basket" element={<Sys12Basket />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

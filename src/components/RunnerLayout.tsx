@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, Calendar, Crosshair, DollarSign, TrendingUp } from "lucide-react";
+import { Activity, Calendar, Crosshair, DollarSign, Layers, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/runner/week", label: "Week", icon: Calendar },
   { to: "/runner/bets", label: "Bets", icon: DollarSign },
   { to: "/runner/performance", label: "Performance", icon: TrendingUp },
+  { to: "/runner/sys12-basket", label: "SYS_12", icon: Layers },
 ];
 
 const formatAUD = (v: number | null | undefined) =>

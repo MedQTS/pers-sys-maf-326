@@ -11,6 +11,8 @@ export default function GameDetail() {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
   const [bets, setBets] = useState<any[]>([]);
+  const [sys12Audit, setSys12Audit] = useState<any | null>(null);
+  const [showSys12Raw, setShowSys12Raw] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export default function GameDetail() {
 
   async function loadData(gameId: string) {
     setLoading(true);
-    const [gameRes, statesRes, snapsRes, sigRes, betsRes] = await Promise.all([
+    const [gameRes, statesRes, snapsRes, sigRes, betsRes, sys12Res] = await Promise.all([
       supabase
         .from("pers_sys_games")
         .select(`
@@ -33,6 +35,14 @@ export default function GameDetail() {
       supabase.from("pers_sys_market_snapshots").select("*").eq("game_id", gameId),
       supabase.from("pers_sys_signals_v2").select("*").eq("game_id", gameId),
       supabase.from("pers_sys_bets").select("*").eq("game_id", gameId).neq("status", "VOID"),
+      supabase
+        .from("pers_sys_signal_audit_v2")
+        .select("id, system_code, audit_status, fail_code, reason_json, created_at")
+        .eq("game_id", gameId)
+        .eq("system_code", "SYS_12")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     setGame(gameRes.data);
@@ -40,6 +50,7 @@ export default function GameDetail() {
     setSnapshots(snapsRes.data || []);
     setSignals(sigRes.data || []);
     setBets(betsRes.data || []);
+    setSys12Audit(sys12Res.data || null);
     setLoading(false);
   }
 

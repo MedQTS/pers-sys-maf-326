@@ -2154,6 +2154,127 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ==============================
+        // SYS_12 — Bottom-2/3 Fade Multi Candidate Legs (Phase 1A: audit-only)
+        // Writes audit/candidate-leg rows ONLY. Never calls upsertSignalV2.
+        // No basket/treble/SGM/staking allocation. No SYS_10A interaction.
+        // ==============================
+        if (system_code === "SYS_12") {
+          const bottomFadeTeams: string[] = Array.isArray((sys.staking_config as any)?.bottom_fade_teams)
+            ? (sys.staking_config as any).bottom_fade_teams
+            : ["West Coast", "Richmond", "Essendon"];
+          const tier2Teams: string[] = Array.isArray((sys.staking_config as any)?.tier2_teams)
+            ? (sys.staking_config as any).tier2_teams
+            : ["St Kilda", "Melbourne"];
+          const tier3Excluded: string[] = Array.isArray((sys.staking_config as any)?.tier3_excluded_teams)
+            ? (sys.staking_config as any).tier3_excluded_teams
+            : ["Gold Coast", "Port Adelaide", "North Melbourne", "GWS"];
+
+          const homeName = g.home_team?.canonical_name ?? null;
+          const awayName = g.away_team?.canonical_name ?? null;
+
+          const sys12Reason: Record<string, any> = {
+            ...reason,
+            system_code: "SYS_12",
+            sys12_phase: "phase_1_candidate_leg_evaluator",
+            market: "MATCH_RESULT",
+            leg_type: "H2H",
+            home_team: homeName,
+            away_team: awayName,
+            selection_team: null,
+            fade_target_team: null,
+            selection_side: null,
+            fade_target_side: null,
+            selection_tier: null,
+            selection_tier_label: null,
+            fade_target_reason: null,
+            pass: false,
+            fail_code: null,
+            warning_codes: [] as string[],
+            bottom_fade_config: {
+              bottom_fade_teams: bottomFadeTeams,
+              tier2_teams: tier2Teams,
+              tier3_excluded_teams: tier3Excluded,
+            },
+            evaluated_at: new Date().toISOString(),
+          };
+
+          let sys12Pass = false;
+          let sys12FailCode: string | null = null;
+          let sys12Side: Side | null = null;
+
+          if (!homeName || !awayName) {
+            sys12FailCode = "missing_team_data";
+          } else if (tier3Excluded.includes(homeName) || tier3Excluded.includes(awayName)) {
+            sys12FailCode = "tier3_team_involved";
+          } else {
+            const homeIsFade = bottomFadeTeams.includes(homeName);
+            const awayIsFade = bottomFadeTeams.includes(awayName);
+
+            if (!homeIsFade && !awayIsFade) {
+              sys12FailCode = "no_bottom_2_3_fade_target";
+            } else if (homeIsFade && awayIsFade) {
+              sys12FailCode = "favourite_not_identified";
+              sys12Reason.warning_codes.push("manual_review_required");
+              sys12Reason.fade_target_reason = "both_teams_in_bottom_fade_list";
+            } else {
+              const fadeTeam = homeIsFade ? homeName : awayName;
+              const selectionTeam = homeIsFade ? awayName : homeName;
+              sys12Side = homeIsFade ? "AWAY" : "HOME";
+              const fadeSide: Side = homeIsFade ? "HOME" : "AWAY";
+
+              let tier = "T1_GOLDEN";
+              let tierLabel = "Tier 1 — Golden / full-confidence eligible";
+              if (tier2Teams.includes(selectionTeam)) {
+                tier = "T2_NERVOUS";
+                tierLabel = "Tier 2 — Nervous but usable";
+                sys12Reason.warning_codes.push("tier2_reduced_exposure");
+              }
+
+              sys12Reason.selection_team = selectionTeam;
+              sys12Reason.fade_target_team = fadeTeam;
+              sys12Reason.selection_side = sys12Side;
+              sys12Reason.fade_target_side = fadeSide;
+              sys12Reason.selection_tier = tier;
+              sys12Reason.selection_tier_label = tierLabel;
+              sys12Reason.fade_target_reason = "bottom_2_3_fade_target_identified";
+              sys12Pass = true;
+            }
+          }
+
+          sys12Reason.pass = sys12Pass;
+          sys12Reason.fail_code = sys12FailCode;
+
+          await upsertAuditV2({
+            system_code: "SYS_12",
+            game_id: g.id,
+            season,
+            round: round ?? null,
+            model_snapshot: modelSnap,
+            execution_snapshot: execSnap,
+            model_market: "H2H",
+            execution_market: "H2H",
+            audit_status: sys12Pass ? "PENDING" : "FAIL",
+            fail_stage: sys12Pass ? null : (sys12FailCode === "missing_team_data" ? "DATA" : "MODEL"),
+            fail_code: sys12FailCode,
+            leg_type: sys12Pass ? "H2H" : null,
+            side: sys12Pass ? sys12Side : null,
+            line_at_bet: null,
+            ref_price: null,
+            exec_best_price: null,
+            exec_best_book: null,
+            recommended_units: null,
+            recommended_bankroll_pct: null,
+            staking_contract_version: "v2_canonical_pct",
+            reason_json: sys12Reason,
+          });
+
+          // SYS_12 is audit-only in Phase 1A. Skip all terminal signal/exec logic.
+          continue;
+        }
+
+
+
         let recommendedUnits =
           Number.isFinite(Number(reason.recommended_units))
             ? Number(reason.recommended_units)

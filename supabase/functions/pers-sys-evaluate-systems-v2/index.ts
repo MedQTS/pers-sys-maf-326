@@ -1209,6 +1209,7 @@ Deno.serve(async (req) => {
             c === "open_band" ||
             c === "odds_band" ||
             c === "excluded_state" ||
+            c === "operator_excluded_team" ||
             c === "not_lost_prior" ||
             c === "totals_move_lt_3" ||
             c === "totals_band" ||

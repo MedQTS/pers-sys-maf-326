@@ -1073,11 +1073,10 @@ Deno.serve(async (req) => {
 
       // Rules snapshot policy:
       // - T10 is treated as bookkeeping-only (close), so evaluate criteria using T30 instead.
-      // - Exception: SYS_7 is explicitly "close-only" by spec, so it may use T10.
-      const rulesSnap =
-        modelSnap === "T10" && system_code !== "SYS_7"
-          ? "T30"
-          : modelSnap;
+      // - SYS_7 is aligned to T30 action so it can materialise a signal during ACTION_T30
+      //   (its DB config may still carry model_snapshot=T10 for historical/audit reasons,
+      //    but its rules must evaluate against T30 data at action time).
+      const rulesSnap = modelSnap === "T10" ? "T30" : modelSnap;
 
       const allowCandidate = (sys.signal_mode ?? (sys.allow_candidate ? "ALLOW_CANDIDATE" : "HARD_FAIL")) ===
         "ALLOW_CANDIDATE";

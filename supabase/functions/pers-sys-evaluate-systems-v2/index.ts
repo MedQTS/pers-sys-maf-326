@@ -1209,6 +1209,7 @@ Deno.serve(async (req) => {
             c === "open_band" ||
             c === "odds_band" ||
             c === "excluded_state" ||
+            c === "operator_excluded_team" ||
             c === "not_lost_prior" ||
             c === "totals_move_lt_3" ||
             c === "totals_band" ||
@@ -1839,7 +1840,22 @@ Deno.serve(async (req) => {
 
         // SYS_7 — Home Favourite Bounce Escalation (HARD+)
         if (system_code === "SYS_7") {
-          if (!modelH2H || !openH2H || !homeState) {
+          // Operator exclusion overlay — SYS_7 must not back these teams
+          const SYS7_OPERATOR_EXCLUDED_TEAMS = [
+            "Gold Coast",
+            "Port Adelaide",
+            "North Melbourne",
+            "GWS",
+          ];
+          const sys7HomeName = g.home_team?.canonical_name ?? "";
+          if (SYS7_OPERATOR_EXCLUDED_TEAMS.includes(sys7HomeName)) {
+            modelPass = false;
+            reason.fail = "operator_excluded_team";
+            reason.excluded_team = sys7HomeName;
+            reason.excluded_team_id = g.home_team_id ?? null;
+            reason.excluded_team_policy = "SYS_7_OPERATOR_EXCLUSION";
+            reason.operator_excluded_teams = SYS7_OPERATOR_EXCLUDED_TEAMS;
+          } else if (!modelH2H || !openH2H || !homeState) {
             modelPass = false;
             reason.fail = "missing_model_data";
           } else {

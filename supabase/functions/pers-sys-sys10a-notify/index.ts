@@ -23,6 +23,19 @@ type AltBand = {
   nearest_band_used?: number;
 };
 
+// W1 display-only weather block emitted by pers-sys-sys10a-report.
+type WeatherBlockDisplay = {
+  display_only: true;
+  assessment_stage: string;
+  requested_system_code: "SYS_10A";
+  source_system_code: "SYS_10A" | "SYS_8" | null;
+  fallback_used: boolean;
+  outcome: string | null;
+  reason_code: string | null;
+  policy_code: string | null;
+  no_data: boolean;
+};
+
 type Candidate = {
   game_id: string;
   home: string | null;
@@ -50,6 +63,7 @@ type Candidate = {
   recent_form_overlay_applied?: boolean;
   recent_form_overlay_action?: string;
   overlay_warnings?: string[];
+  weather?: WeatherBlockDisplay;
 };
 
 function esc(s: unknown): string {
@@ -81,11 +95,42 @@ function isRoofedVenue(venue: string | null | undefined): boolean {
   return v.includes("marvel") || v.includes("docklands");
 }
 
-function weatherStatus(venue: string | null | undefined): { weather: string; status: string; roofed: boolean } {
-  if (isRoofedVenue(venue)) {
-    return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+// W1 display-only weather renderer. Uses the weather block from the report
+// payload; falls back to venue-based roof detection only when the block is
+// absent entirely. Does NOT affect stake or pick logic.
+function weatherStatus(c: Candidate): { weather: string; status: string; roofed: boolean } {
+  const w = c.weather;
+  const venue = c.venue;
+  if (!w) {
+    if (isRoofedVenue(venue)) {
+      return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+    }
+    return { weather: "CHECK WEATHER FIRST", status: "no weather block", roofed: false };
   }
-  return { weather: "NOT INCLUDED IN THIS EMAIL", status: "CHECK WEATHER FIRST", roofed: false };
+  if (w.no_data) {
+    if (isRoofedVenue(venue)) {
+      return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+    }
+    return { weather: "CHECK WEATHER FIRST", status: "no weather assessment found", roofed: false };
+  }
+  const src = w.source_system_code ?? "?";
+  const fbTag = w.fallback_used ? " (fallback SYS_8)" : "";
+  const outcome = String(w.outcome ?? "").toUpperCase();
+  switch (outcome) {
+    case "FULL_STAKE":
+      return { weather: "Weather OK (clear)", status: `shadow · source ${src}${fbTag}`, roofed: false };
+    case "HALF_STAKE":
+      return { weather: "Weather caution — half-stake shadow", status: `shadow · source ${src}${fbTag}`, roofed: false };
+    case "PASS":
+      return { weather: "Weather red — would suppress (shadow)", status: `shadow · source ${src}${fbTag}`, roofed: false };
+    case "NOT_APPLICABLE":
+      return { weather: "Roof / indoor — weather not applicable", status: `shadow · source ${src}${fbTag}`, roofed: true };
+    default:
+      if (isRoofedVenue(venue)) {
+        return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+      }
+      return { weather: "CHECK WEATHER FIRST", status: `unknown outcome${outcome ? `: ${outcome}` : ""}`, roofed: false };
+  }
 }
 
 function readableLean(lean: string | undefined): string {

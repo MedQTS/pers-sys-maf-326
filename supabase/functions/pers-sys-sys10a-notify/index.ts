@@ -4,14 +4,12 @@
 // - Calls pers-sys-sys10a-report (read-only).
 // - Sends a single Postmark email if at least one ACTIONABLE candidate exists.
 // - No DB writes. No signals. No bet RPCs. No alert dedupe tables touched.
+// - Wording/layout only: weather is NOT included in SYS_10A email decisioning.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const MANUAL_NOTICE =
-  "SYS_10A filters alternate-over suggestions to lines plausibly near the current main total. It still does not ingest live alternate-total ladders. Only place manually if the listed line and odds are actually available.";
 
 type AltBand = {
   band: number;
@@ -54,13 +52,6 @@ type Candidate = {
   overlay_warnings?: string[];
 };
 
-function hasRecentFormOverWarning(c: Candidate): boolean {
-  return (
-    c.main_lean === "MAIN_TOTAL_OVER" &&
-    !!c.recent_form_overlay_applied &&
-    (c.overlay_warnings ?? []).includes("recent_form_conflicts_with_main_over")
-  );
-
 function esc(s: unknown): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -72,71 +63,150 @@ function eligibleAltBands(c: Candidate): AltBand[] {
   return (c.alt_bands ?? []).filter((b) => b.eligible === true);
 }
 
-function renderMainHtml(c: Candidate): string {
-  const warn = hasRecentFormOverWarning(c)
-    ? `<div style="margin-top:6px;padding:6px 8px;background:#fff7cc;border:1px solid #e0c200;">⚠ Recent 5-game scoring profile is below the current main total; manual caution required.</div>`
-    : "";
-  return `
-    <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
-      <div style="font-weight:bold;font-size:14px;">${esc(c.home)} vs ${esc(c.away)} — ${esc(c.venue)}</div>
-      <div>Main total: <strong>${c.main_total ?? "—"}</strong> | Over ${c.over_price ?? "—"} / Under ${c.under_price ?? "—"}</div>
-      <div>Estimated total: ${c.estimated_total ?? "—"} | Edge: ${c.main_edge ?? "—"} | Lean: <strong>${esc(c.main_lean)}</strong> | Main stake guidance: ${c.main_stake_guidance_u ?? 0}u</div>
-      ${warn}
-    </div>`;
+function fmt(n: number | null | undefined, dp = 2): string {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
+  return Number(n).toFixed(dp);
 }
 
-function renderAltHtml(c: Candidate): string {
-  const elig = eligibleAltBands(c);
-  if (!elig.length) return "";
-  const rows = elig
-    .map((b) => `<li>Over ${b.target_line ?? b.band}: min acceptable odds <strong>${b.min_acceptable_odds ?? "—"}</strong> (gap ${b.alt_gap ?? "—"})</li>`)
-    .join("");
-  const cascade = c.cascade
-    ? `<p style="margin:6px 0 0 0;"><strong>Cascade guide</strong> (cap ${c.cascade.total_exposure_cap_u}u):</p>
-       <ul style="margin:4px 0 0 18px;padding:0;">
-         <li>Anchor — Over ${c.cascade.anchor.target_line ?? c.cascade.anchor.band}: ${c.cascade.anchor.stake_u}u if odds &ge; ${c.cascade.anchor.min_acceptable_odds ?? "—"}</li>
-         ${c.cascade.upside ? `<li>Upside — Over ${c.cascade.upside.target_line ?? c.cascade.upside.band}: ${c.cascade.upside.stake_u}u if odds &ge; ${c.cascade.upside.min_acceptable_odds ?? "—"}</li>` : ""}
-       </ul>`
-    : "";
+function fmtSigned(n: number | null | undefined, dp = 2): string {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
+  const v = Number(n);
+  return (v >= 0 ? "+" : "") + v.toFixed(dp);
+}
+
+// Reliable roof/indoor detection: Marvel Stadium / Docklands only.
+function isRoofedVenue(venue: string | null | undefined): boolean {
+  if (!venue) return false;
+  const v = venue.toLowerCase();
+  return v.includes("marvel") || v.includes("docklands");
+}
+
+function weatherStatus(venue: string | null | undefined): { weather: string; status: string; roofed: boolean } {
+  if (isRoofedVenue(venue)) {
+    return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+  }
+  return { weather: "NOT INCLUDED IN THIS EMAIL", status: "CHECK WEATHER FIRST", roofed: false };
+}
+
+function readableLean(lean: string | undefined): string {
+  switch (lean) {
+    case "MAIN_TOTAL_OVER": return "Over";
+    case "MAIN_TOTAL_UNDER": return "Under";
+    case "PASS": return "No main-total bet";
+    default: return "No main-total bet";
+  }
+}
+
+const READABLE_SUPPRESSION: Record<string, string> = {
+  alt_line_too_far_below_main_total: "Alt line too far below main total",
+  pass_no_actionable_alt_candidate: "No usable alt candidate",
+  missing_main_total: "Missing main total",
+};
+function readableSuppression(code: string): string {
+  return READABLE_SUPPRESSION[code] ?? code.replace(/_/g, " ");
+}
+
+// ---------- Main-total card ----------
+function renderMainHtml(c: Candidate): string {
+  const w = weatherStatus(c.venue);
+  const stakeLine = w.roofed
+    ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+    : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
   return `
-    <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
-      <div style="font-weight:bold;font-size:14px;">${esc(c.home)} vs ${esc(c.away)} — ${esc(c.venue)}</div>
-      <div>Main total: <strong>${c.main_total ?? "—"}</strong> | Lean: <strong>${esc(c.main_lean)}</strong></div>
-      <p style="margin:6px 0 0 0;"><strong>Market-near alt-over candidates:</strong></p>
-      <ul style="margin:4px 0 0 18px;padding:0;">${rows}</ul>
-      ${cascade}
+    <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
+      <div style="font-weight:bold;font-size:14px;margin-bottom:4px;">${esc(c.home)} v ${esc(c.away)} — ${esc(c.venue)}</div>
+      <div>Base model side: Over ${fmt(c.main_total, 1)}</div>
+      <div>Estimated total: ${fmt(c.estimated_total, 1)}</div>
+      <div>Base edge: ${fmtSigned(c.main_edge, 2)} pts</div>
+      <div>Price: ${fmt(c.over_price, 2)}</div>
+      <div>Weather: ${esc(w.weather)}</div>
+      <div>Status: ${esc(w.status)}</div>
+      <div>${esc(stakeLine)}</div>
     </div>`;
 }
 
 function renderMainText(c: Candidate): string {
-  const lines = [
-    `${c.home} vs ${c.away} — ${c.venue}`,
-    `  Main total: ${c.main_total} | Over ${c.over_price} / Under ${c.under_price}`,
-    `  Est total: ${c.estimated_total} | Edge: ${c.main_edge} | Lean: ${c.main_lean} | Main stake: ${c.main_stake_guidance_u ?? 0}u`,
-  ];
-  if (hasRecentFormOverWarning(c)) {
-    lines.push(`  !! Recent 5-game scoring profile is below the current main total; manual caution required.`);
+  const w = weatherStatus(c.venue);
+  const stakeLine = w.roofed
+    ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+    : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
+  return [
+    `${c.home} v ${c.away} — ${c.venue}`,
+    `  Base model side: Over ${fmt(c.main_total, 1)}`,
+    `  Estimated total: ${fmt(c.estimated_total, 1)}`,
+    `  Base edge: ${fmtSigned(c.main_edge, 2)} pts`,
+    `  Price: ${fmt(c.over_price, 2)}`,
+    `  Weather: ${w.weather}`,
+    `  Status: ${w.status}`,
+    stakeLine,
+  ].join("\n");
+}
+
+// ---------- Alt-over card ----------
+function renderAltHtml(c: Candidate): string {
+  const elig = eligibleAltBands(c);
+  if (!elig.length) return "";
+  const w = weatherStatus(c.venue);
+  const side = readableLean(c.main_lean);
+
+  const checks: string[] = [];
+  if (c.cascade) {
+    const a = c.cascade.anchor;
+    checks.push(`Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds &ge; ${fmt(a.min_acceptable_odds, 2)}`);
+    if (c.cascade.upside) {
+      const u = c.cascade.upside;
+      checks.push(`Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds &ge; ${fmt(u.min_acceptable_odds, 2)}`);
+    }
+    checks.push(`Cap: ${fmt(c.cascade.total_exposure_cap_u, 1)}u`);
+  } else {
+    for (const b of elig) {
+      checks.push(`Over ${fmt(b.target_line ?? b.band, 1)} — min acceptable odds ${fmt(b.min_acceptable_odds, 2)}`);
+    }
   }
-  return lines.join("\n");
+
+  const weatherNote = w.roofed ? "" : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
+
+  return `
+    <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
+      <div style="font-weight:bold;font-size:14px;margin-bottom:4px;">${esc(c.home)} v ${esc(c.away)} — ${esc(c.venue)}</div>
+      <div>Main total: ${fmt(c.main_total, 1)}</div>
+      <div>Base model side: ${esc(side)}</div>
+      <div>Weather: ${esc(w.weather)}</div>
+      <div>Status: ${esc(w.status)}</div>
+      <div style="margin-top:6px;">Check:</div>
+      <ul style="margin:2px 0 0 18px;padding:0;">
+        ${checks.map((c) => `<li>${c}</li>`).join("")}
+      </ul>
+      ${weatherNote}
+    </div>`;
 }
 
 function renderAltText(c: Candidate): string {
   const elig = eligibleAltBands(c);
   if (!elig.length) return "";
+  const w = weatherStatus(c.venue);
+  const side = readableLean(c.main_lean);
   const lines: string[] = [];
-  lines.push(`${c.home} vs ${c.away} — ${c.venue}`);
-  lines.push(`  Main total: ${c.main_total} | Lean: ${c.main_lean}`);
-  lines.push(`  Market-near alt-over candidates:`);
-  for (const b of elig) {
-    lines.push(`    - Over ${b.target_line ?? b.band}: min odds ${b.min_acceptable_odds} (gap ${b.alt_gap})`);
-  }
+  lines.push(`${c.home} v ${c.away} — ${c.venue}`);
+  lines.push(`  Main total: ${fmt(c.main_total, 1)}`);
+  lines.push(`  Base model side: ${side}`);
+  lines.push(`  Weather: ${w.weather}`);
+  lines.push(`  Status: ${w.status}`);
+  lines.push(`  Check:`);
   if (c.cascade) {
-    lines.push(`  Cascade (cap ${c.cascade.total_exposure_cap_u}u):`);
-    lines.push(`    Anchor Over ${c.cascade.anchor.target_line ?? c.cascade.anchor.band}: ${c.cascade.anchor.stake_u}u if odds >= ${c.cascade.anchor.min_acceptable_odds}`);
+    const a = c.cascade.anchor;
+    lines.push(`    - Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds >= ${fmt(a.min_acceptable_odds, 2)}`);
     if (c.cascade.upside) {
-      lines.push(`    Upside Over ${c.cascade.upside.target_line ?? c.cascade.upside.band}: ${c.cascade.upside.stake_u}u if odds >= ${c.cascade.upside.min_acceptable_odds}`);
+      const u = c.cascade.upside;
+      lines.push(`    - Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds >= ${fmt(u.min_acceptable_odds, 2)}`);
+    }
+    lines.push(`    - Cap: ${fmt(c.cascade.total_exposure_cap_u, 1)}u`);
+  } else {
+    for (const b of elig) {
+      lines.push(`    - Over ${fmt(b.target_line ?? b.band, 1)}: min odds ${fmt(b.min_acceptable_odds, 2)}`);
     }
   }
+  if (!w.roofed) lines.push(`  Stake guide applies only if weather passes.`);
   return lines.join("\n");
 }
 
@@ -187,11 +257,9 @@ Deno.serve(async (req) => {
     const suppressed = all.filter((c) => c.status === "SUPPRESSED");
     const suppression_breakdown = reportJson.suppression_breakdown ?? {};
 
-    // Section A: main over/under with stake guidance > 0
     const mainSection = candidates.filter(
       (c) => (c.main_lean === "MAIN_TOTAL_OVER" || c.main_lean === "MAIN_TOTAL_UNDER") && (c.main_stake_guidance_u ?? 0) > 0,
     );
-    // Section B: any eligible alt-over band (already filtered by report)
     const altSection = candidates.filter((c) => eligibleAltBands(c).length > 0);
 
     if (candidates.length === 0) {
@@ -208,57 +276,54 @@ Deno.serve(async (req) => {
       );
     }
 
-    const subject = `SYS_10A Manual Total Guide — ${candidates.length} actionable candidate(s)`;
+    const subject = `SYS_10A Total Guide — ${candidates.length} check(s)`;
 
-    const suppressionSummaryHtml = Object.keys(suppression_breakdown).length
-      ? `<ul style="margin:4px 0 0 18px;padding:0;">${Object.entries(suppression_breakdown)
-          .map(([k, v]) => `<li>${esc(k)}: ${esc(v)}</li>`)
+    const suppressionEntries = Object.entries(suppression_breakdown);
+    const suppressionFooterHtml = suppressionEntries.length
+      ? `<ul style="margin:4px 0 0 18px;padding:0;">${suppressionEntries
+          .map(([k, v]) => `<li>${esc(readableSuppression(k))}: ${esc(v)}</li>`)
           .join("")}</ul>`
       : "<p style='margin:4px 0 0 0;color:#666;'>None.</p>";
 
     const htmlBody = `
       <div style="font-family:ui-monospace,Menlo,monospace;color:#111;">
-        <h2 style="margin:0 0 8px 0;">SYS_10A Manual Total Guide</h2>
-        <p style="margin:0 0 6px 0;background:#fff7cc;border:1px solid #e0c200;padding:8px 10px;">
-          <strong>MANUAL CHECK ONLY.</strong> No bet has been placed.
-        </p>
-        <p style="margin:8px 0;">${esc(MANUAL_NOTICE)}</p>
-        <p style="margin:8px 0;color:#444;">Actionable: <strong>${candidates.length}</strong> · Suppressed: ${suppressed.length} · Generated: ${esc(reportJson.generated_at)}</p>
+        <h2 style="margin:0 0 10px 0;">SYS_10A Total Guide</h2>
 
-        <h3 style="margin:16px 0 4px 0;">A. Main Total Manual Checks</h3>
+        <h3 style="margin:16px 0 4px 0;">Main Total Checks</h3>
         ${mainSection.length ? mainSection.map(renderMainHtml).join("") : "<p style='color:#666;'>None.</p>"}
 
-        <h3 style="margin:16px 0 4px 0;">B. Alt-Over Manual Checks</h3>
+        <h3 style="margin:20px 0 4px 0;">Alt-Over Checks</h3>
         ${altSection.length ? altSection.map(renderAltHtml).join("") : "<p style='color:#666;'>None.</p>"}
 
-        <h3 style="margin:16px 0 4px 0;">C. Suppression Summary</h3>
-        ${suppressionSummaryHtml}
+        <h3 style="margin:24px 0 4px 0;">NO-ACTION NOTES</h3>
+        ${suppressionFooterHtml}
 
-        <p style="margin-top:16px;color:#666;font-size:12px;">
-          SYS_10A is not a live system. It does not create ACTION NOW alerts and cannot accept bets.
+        <hr style="margin:20px 0;border:none;border-top:1px solid #ddd;">
+        <p style="margin:6px 0;color:#666;font-size:12px;">
+          Generated: ${esc(reportJson.generated_at)} · Actionable checks: ${candidates.length} · Suppressed: ${suppressed.length}
+        </p>
+        <p style="margin:6px 0;color:#666;font-size:12px;">
+          SYS_10A is a manual guide only. It does not place bets or create ACTION NOW alerts.
         </p>
       </div>`;
 
     const textBody = [
-      "SYS_10A Manual Total Guide",
-      "MANUAL CHECK ONLY. No bet has been placed.",
+      "SYS_10A Total Guide",
       "",
-      MANUAL_NOTICE,
-      "",
-      `Actionable: ${candidates.length} | Suppressed: ${suppressed.length} | Generated: ${reportJson.generated_at}`,
-      "",
-      "A. Main Total Manual Checks",
+      "Main Total Checks",
       mainSection.length ? mainSection.map(renderMainText).join("\n\n") : "  None.",
       "",
-      "B. Alt-Over Manual Checks",
+      "Alt-Over Checks",
       altSection.length ? altSection.map(renderAltText).join("\n\n") : "  None.",
       "",
-      "C. Suppression Summary",
-      Object.keys(suppression_breakdown).length
-        ? Object.entries(suppression_breakdown).map(([k, v]) => `  - ${k}: ${v}`).join("\n")
+      "NO-ACTION NOTES",
+      suppressionEntries.length
+        ? suppressionEntries.map(([k, v]) => `  - ${readableSuppression(k)}: ${v}`).join("\n")
         : "  None.",
       "",
-      "SYS_10A is not a live system. It does not create ACTION NOW alerts and cannot accept bets.",
+      "---",
+      `Generated: ${reportJson.generated_at} | Actionable checks: ${candidates.length} | Suppressed: ${suppressed.length}`,
+      "SYS_10A is a manual guide only. It does not place bets or create ACTION NOW alerts.",
     ].join("\n");
 
     if (dryRun) {

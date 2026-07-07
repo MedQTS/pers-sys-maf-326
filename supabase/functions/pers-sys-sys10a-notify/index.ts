@@ -333,6 +333,9 @@ Deno.serve(async (req) => {
     const htmlBody = `
       <div style="font-family:ui-monospace,Menlo,monospace;color:#111;">
         <h2 style="margin:0 0 10px 0;">SYS_10A Total Guide</h2>
+        <p style="margin:0 0 10px 0;padding:6px 8px;border:1px dashed #999;color:#333;font-size:12px;">
+          Weather is displayed for information only; SYS_10A stake and pick logic are unchanged in W1.
+        </p>
 
         <h3 style="margin:16px 0 4px 0;">Main Total Checks</h3>
         ${mainSection.length ? mainSection.map(renderMainHtml).join("") : "<p style='color:#666;'>None.</p>"}
@@ -354,6 +357,8 @@ Deno.serve(async (req) => {
 
     const textBody = [
       "SYS_10A Total Guide",
+      "",
+      "Weather is displayed for information only; SYS_10A stake and pick logic are unchanged in W1.",
       "",
       "Main Total Checks",
       mainSection.length ? mainSection.map(renderMainText).join("\n\n") : "  None.",

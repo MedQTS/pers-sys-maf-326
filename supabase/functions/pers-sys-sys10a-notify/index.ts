@@ -153,7 +153,7 @@ function readableSuppression(code: string): string {
 
 // ---------- Main-total card ----------
 function renderMainHtml(c: Candidate): string {
-  const w = weatherStatus(c.venue);
+  const w = weatherStatus(c);
   const stakeLine = w.roofed
     ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
     : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
@@ -171,7 +171,7 @@ function renderMainHtml(c: Candidate): string {
 }
 
 function renderMainText(c: Candidate): string {
-  const w = weatherStatus(c.venue);
+  const w = weatherStatus(c);
   const stakeLine = w.roofed
     ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
     : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
@@ -191,7 +191,7 @@ function renderMainText(c: Candidate): string {
 function renderAltHtml(c: Candidate): string {
   const elig = eligibleAltBands(c);
   if (!elig.length) return "";
-  const w = weatherStatus(c.venue);
+  const w = weatherStatus(c);
   const side = readableLean(c.main_lean);
 
   const checks: string[] = [];
@@ -229,7 +229,7 @@ function renderAltHtml(c: Candidate): string {
 function renderAltText(c: Candidate): string {
   const elig = eligibleAltBands(c);
   if (!elig.length) return "";
-  const w = weatherStatus(c.venue);
+  const w = weatherStatus(c);
   const side = readableLean(c.main_lean);
   const lines: string[] = [];
   lines.push(`${c.home} v ${c.away} — ${c.venue}`);

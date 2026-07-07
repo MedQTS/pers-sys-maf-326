@@ -73,6 +73,83 @@ function venueCautionFlags(venue: string | null | undefined, mainLean: string, a
   return flags;
 }
 
+// ---------- W1 display-only weather block ----------
+// Read-only. Never writes. Never calls weather-fetch/weather-assess.
+// Lookup order: SYS_10A T30 -> fallback SYS_8 T30 for the same game_id.
+type WeatherBlockDisplay = {
+  display_only: true;
+  assessment_stage: "T30";
+  requested_system_code: "SYS_10A";
+  source_system_code: "SYS_10A" | "SYS_8" | null;
+  fallback_used: boolean;
+  outcome: string | null;
+  reason_code: string | null;
+  policy_code: string | null;
+  no_data: boolean;
+};
+
+async function fetchWeatherBlockDisplay(
+  supabase: ReturnType<typeof createClient>,
+  gameId: string,
+): Promise<WeatherBlockDisplay> {
+  const base: WeatherBlockDisplay = {
+    display_only: true,
+    assessment_stage: "T30",
+    requested_system_code: "SYS_10A",
+    source_system_code: null,
+    fallback_used: false,
+    outcome: null,
+    reason_code: null,
+    policy_code: null,
+    no_data: true,
+  };
+  try {
+    const { data: primary } = await supabase
+      .from("pers_sys_weather_assessments")
+      .select("outcome, reason_code, policy_code, assessment_stage, system_code")
+      .eq("game_id", gameId)
+      .eq("system_code", "SYS_10A")
+      .eq("assessment_stage", "T30")
+      .order("assessed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (primary) {
+      return {
+        ...base,
+        source_system_code: "SYS_10A",
+        fallback_used: false,
+        outcome: (primary as any).outcome ?? null,
+        reason_code: (primary as any).reason_code ?? null,
+        policy_code: (primary as any).policy_code ?? null,
+        no_data: false,
+      };
+    }
+    const { data: fb } = await supabase
+      .from("pers_sys_weather_assessments")
+      .select("outcome, reason_code, policy_code, assessment_stage, system_code")
+      .eq("game_id", gameId)
+      .eq("system_code", "SYS_8")
+      .eq("assessment_stage", "T30")
+      .order("assessed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fb) {
+      return {
+        ...base,
+        source_system_code: "SYS_8",
+        fallback_used: true,
+        outcome: (fb as any).outcome ?? null,
+        reason_code: (fb as any).reason_code ?? null,
+        policy_code: (fb as any).policy_code ?? null,
+        no_data: false,
+      };
+    }
+    return base;
+  } catch (_e) {
+    return base;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -149,6 +226,7 @@ Deno.serve(async (req) => {
     };
 
     for (const g of games) {
+      const weatherBlock = await fetchWeatherBlockDisplay(supabase, g.id);
       const out: any = {
         game_id: g.id,
         season: g.season,
@@ -157,6 +235,7 @@ Deno.serve(async (req) => {
         venue: g.venue,
         home: teamName.get(g.home_team_id) ?? null,
         away: teamName.get(g.away_team_id) ?? null,
+        weather: weatherBlock,
       };
 
       const { data: snapRows } = await supabase

@@ -29,28 +29,44 @@ Deno.serve(async (req) => {
       typeof body.game_id === "string" && body.game_id.trim() ? body.game_id.trim() : null;
     const horizonDays = Number(body.horizon_days ?? 10);
     const season = Number(body.season ?? new Date().getFullYear());
-    const snapshotStage: string = typeof body.snapshot_stage === "string" && body.snapshot_stage.trim() ? body.snapshot_stage.trim() : "T30";
-    const assessmentStage: string = typeof body.assessment_stage === "string" && body.assessment_stage.trim() ? body.assessment_stage.trim() : "T30";
+    const rawSnapshotStage: string = typeof body.snapshot_stage === "string" && body.snapshot_stage.trim() ? body.snapshot_stage.trim().toUpperCase() : "T30";
+    const rawAssessmentStage: string = typeof body.assessment_stage === "string" && body.assessment_stage.trim() ? body.assessment_stage.trim().toUpperCase() : "T30";
+    const snapshotStage: "T30" | "T10" = rawSnapshotStage === "T10" ? "T10" : "T30";
+    const assessmentStage: "T30" | "T10" = rawAssessmentStage === "T10" ? "T10" : "T30";
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // 1) weather-enabled systems intersected with optional override
-    const requestedCodes: string[] | null = Array.isArray(body.system_codes)
-      ? body.system_codes.map((c: any) => String(c)).filter(Boolean)
+    // 1) Resolve effective system list.
+    // If caller supplies a non-empty, usable system_codes array, treat it as
+    // an EXPLICIT override — do NOT filter against pers_sys_systems_v2. This
+    // supports report-only systems (e.g. SYS_10A) that are intentionally absent
+    // from pers_sys_systems_v2 but still have a policy fallback in weather-assess.
+    const explicitCodes: string[] | null = Array.isArray(body.system_codes)
+      ? Array.from(
+          new Set(
+            (body.system_codes as unknown[])
+              .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+              .map((c) => c.trim().toUpperCase()),
+          ),
+        )
       : null;
 
-    const { data: systems, error: sysErr } = await supabase
-      .from("pers_sys_systems_v2")
-      .select("system_code, active, weather_enabled")
-      .eq("active", true)
-      .eq("weather_enabled", true);
-    if (sysErr) throw sysErr;
-
-    const systemCodes = (systems || [])
-      .map((s: any) => s.system_code as string)
-      .filter((c) => !requestedCodes || requestedCodes.includes(c));
+    let systemCodes: string[];
+    if (explicitCodes && explicitCodes.length > 0) {
+      systemCodes = explicitCodes;
+    } else {
+      const { data: systems, error: sysErr } = await supabase
+        .from("pers_sys_systems_v2")
+        .select("system_code, active, weather_enabled")
+        .eq("active", true)
+        .eq("weather_enabled", true);
+      if (sysErr) throw sysErr;
+      systemCodes = Array.from(
+        new Set((systems || []).map((s: any) => String(s.system_code)).filter(Boolean)),
+      );
+    }
 
     // 2) upcoming games window matching evaluator PRECHECK selection
     const now = new Date();

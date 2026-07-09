@@ -50,6 +50,16 @@ type Candidate = {
   main_lean?: string;
   main_stake_guidance_u?: number;
   alt_bands?: AltBand[];
+  // Warning/conflict metadata (added by report; safe/absent by default)
+  display_status?: string;
+  conflict_warning_active?: boolean;
+  conflict_warning_type?: "manual_tactical" | "recent_form" | null;
+  conflict_warning_reasons?: string[];
+  conflict_warning_note?: string | null;
+  execution_default_units?: number;
+  include_in_best_bets?: boolean;
+  include_in_multis?: boolean;
+  recent_form_warning_against_main_over?: boolean;
   cascade?: null | {
     total_exposure_cap_u: number;
     anchor: { band: number; target_line?: number; stake_u: number; min_acceptable_odds: number | null; note: string };
@@ -151,40 +161,125 @@ function readableSuppression(code: string): string {
   return READABLE_SUPPRESSION[code] ?? code.replace(/_/g, " ");
 }
 
+// ---------- Warning helpers ----------
+type WarningInfo = {
+  active: true;
+  type: "manual_tactical" | "recent_form";
+  headline: string;
+  statusText: string;
+  reasonText: string;
+  reasonCodes: string[];
+};
+
+function warningInfo(c: Candidate): WarningInfo | null {
+  if (!c.conflict_warning_active) return null;
+  const t = c.conflict_warning_type;
+  if (t === "manual_tactical") {
+    const codes = (c.conflict_warning_reasons ?? []).map(String);
+    const note = (c.conflict_warning_note ?? "").trim();
+    const reasonText = note
+      ? note
+      : (codes.length
+          ? `Recognised reason(s): ${codes.join(", ")}.`
+          : "Recent tactical under profile conflicts with SYS_10A Over.");
+    return {
+      active: true,
+      type: "manual_tactical",
+      headline: "CONFLICT WARNING — PASS PREFERRED",
+      statusText: c.display_status ?? "CONFLICT PASS / PRICE CHECK ONLY",
+      reasonText,
+      reasonCodes: codes,
+    };
+  }
+  if (t === "recent_form") {
+    return {
+      active: true,
+      type: "recent_form",
+      headline: "WARNING: Recent-form conflict",
+      statusText: c.display_status ?? "RECENT FORM WARNING / PRICE CHECK ONLY",
+      reasonText: "SYS_10A model remains Over, but recent scoring profile is below market.",
+      reasonCodes: c.conflict_warning_reasons ?? [],
+    };
+  }
+  return null;
+}
+
+const EXECUTION_LINES = [
+  "0u default",
+  "Pass preferred",
+  "Do not include in best bets",
+  "Do not include in multis unless manually overridden",
+];
+
+function warningBlockHtml(w: WarningInfo): string {
+  return `
+      <div style="border:2px solid #b00020;background:#fff4f4;padding:8px 10px;margin:6px 0 10px 0;">
+        <div style="font-weight:bold;color:#b00020;">${esc(w.headline)}</div>
+        <div style="margin-top:4px;">${esc(w.reasonText)}</div>
+        <div style="margin-top:4px;">Status: <strong>${esc(w.statusText)}</strong></div>
+        <div style="margin-top:4px;">Execution:</div>
+        <ul style="margin:2px 0 0 18px;padding:0;">
+          ${EXECUTION_LINES.map((l) => `<li>${esc(l)}</li>`).join("")}
+        </ul>
+      </div>`;
+}
+
+function warningBlockText(w: WarningInfo, indent = "  "): string {
+  const lines = [
+    `${indent}${w.headline}`,
+    `${indent}Reason: ${w.reasonText}`,
+    `${indent}Status: ${w.statusText}`,
+    `${indent}Execution:`,
+    ...EXECUTION_LINES.map((l) => `${indent}  - ${l}`),
+  ];
+  return lines.join("\n");
+}
+
 // ---------- Main-total card ----------
 function renderMainHtml(c: Candidate): string {
   const w = weatherStatus(c);
-  const stakeLine = w.roofed
-    ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-    : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
+  const warn = warningInfo(c);
+  const stakeLine = warn
+    ? `Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
+    : (w.roofed
+        ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+        : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`);
+  const statusText = warn ? warn.statusText : w.status;
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
       <div style="font-weight:bold;font-size:14px;margin-bottom:4px;">${esc(c.home)} v ${esc(c.away)} — ${esc(c.venue)}</div>
+      ${warn ? warningBlockHtml(warn) : ""}
       <div>Base model side: Over ${fmt(c.main_total, 1)}</div>
       <div>Estimated total: ${fmt(c.estimated_total, 1)}</div>
       <div>Base edge: ${fmtSigned(c.main_edge, 2)} pts</div>
       <div>Price: ${fmt(c.over_price, 2)}</div>
       <div>Weather: ${esc(w.weather)}</div>
-      <div>Status: ${esc(w.status)}</div>
+      <div>Status: ${esc(statusText)}</div>
       <div>${esc(stakeLine)}</div>
     </div>`;
 }
 
 function renderMainText(c: Candidate): string {
   const w = weatherStatus(c);
-  const stakeLine = w.roofed
-    ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-    : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
-  return [
+  const warn = warningInfo(c);
+  const stakeLine = warn
+    ? `  Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
+    : (w.roofed
+        ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+        : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`);
+  const statusText = warn ? warn.statusText : w.status;
+  const lines = [
     `${c.home} v ${c.away} — ${c.venue}`,
     `  Base model side: Over ${fmt(c.main_total, 1)}`,
     `  Estimated total: ${fmt(c.estimated_total, 1)}`,
     `  Base edge: ${fmtSigned(c.main_edge, 2)} pts`,
     `  Price: ${fmt(c.over_price, 2)}`,
     `  Weather: ${w.weather}`,
-    `  Status: ${w.status}`,
-    stakeLine,
-  ].join("\n");
+    `  Status: ${statusText}`,
+  ];
+  if (warn) lines.push(warningBlockText(warn));
+  lines.push(stakeLine);
+  return lines.join("\n");
 }
 
 // ---------- Alt-over card ----------
@@ -192,10 +287,16 @@ function renderAltHtml(c: Candidate): string {
   const elig = eligibleAltBands(c);
   if (!elig.length) return "";
   const w = weatherStatus(c);
+  const warn = warningInfo(c);
   const side = readableLean(c.main_lean);
 
   const checks: string[] = [];
-  if (c.cascade) {
+  if (warn) {
+    // Downgraded execution: show bands as technically eligible only.
+    for (const b of elig) {
+      checks.push(`Over ${fmt(b.target_line ?? b.band, 1)} — technically eligible (min acceptable odds ${fmt(b.min_acceptable_odds, 2)})`);
+    }
+  } else if (c.cascade) {
     const a = c.cascade.anchor;
     checks.push(`Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds &ge; ${fmt(a.min_acceptable_odds, 2)}`);
     if (c.cascade.upside) {
@@ -209,16 +310,20 @@ function renderAltHtml(c: Candidate): string {
     }
   }
 
-  const weatherNote = w.roofed ? "" : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
+  const weatherNote = warn || w.roofed
+    ? ""
+    : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
+  const statusText = warn ? warn.statusText : w.status;
 
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
       <div style="font-weight:bold;font-size:14px;margin-bottom:4px;">${esc(c.home)} v ${esc(c.away)} — ${esc(c.venue)}</div>
+      ${warn ? warningBlockHtml(warn) : ""}
       <div>Main total: ${fmt(c.main_total, 1)}</div>
       <div>Base model side: ${esc(side)}</div>
       <div>Weather: ${esc(w.weather)}</div>
-      <div>Status: ${esc(w.status)}</div>
-      <div style="margin-top:6px;">Check:</div>
+      <div>Status: ${esc(statusText)}</div>
+      <div style="margin-top:6px;">Model output:</div>
       <ul style="margin:2px 0 0 18px;padding:0;">
         ${checks.map((c) => `<li>${c}</li>`).join("")}
       </ul>
@@ -230,15 +335,22 @@ function renderAltText(c: Candidate): string {
   const elig = eligibleAltBands(c);
   if (!elig.length) return "";
   const w = weatherStatus(c);
+  const warn = warningInfo(c);
   const side = readableLean(c.main_lean);
+  const statusText = warn ? warn.statusText : w.status;
   const lines: string[] = [];
   lines.push(`${c.home} v ${c.away} — ${c.venue}`);
   lines.push(`  Main total: ${fmt(c.main_total, 1)}`);
   lines.push(`  Base model side: ${side}`);
   lines.push(`  Weather: ${w.weather}`);
-  lines.push(`  Status: ${w.status}`);
-  lines.push(`  Check:`);
-  if (c.cascade) {
+  lines.push(`  Status: ${statusText}`);
+  if (warn) lines.push(warningBlockText(warn));
+  lines.push(`  Model output:`);
+  if (warn) {
+    for (const b of elig) {
+      lines.push(`    - Over ${fmt(b.target_line ?? b.band, 1)}: technically eligible (min odds ${fmt(b.min_acceptable_odds, 2)})`);
+    }
+  } else if (c.cascade) {
     const a = c.cascade.anchor;
     lines.push(`    - Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds >= ${fmt(a.min_acceptable_odds, 2)}`);
     if (c.cascade.upside) {
@@ -251,7 +363,7 @@ function renderAltText(c: Candidate): string {
       lines.push(`    - Over ${fmt(b.target_line ?? b.band, 1)}: min odds ${fmt(b.min_acceptable_odds, 2)}`);
     }
   }
-  if (!w.roofed) lines.push(`  Stake guide applies only if weather passes.`);
+  if (!warn && !w.roofed) lines.push(`  Stake guide applies only if weather passes.`);
   return lines.join("\n");
 }
 

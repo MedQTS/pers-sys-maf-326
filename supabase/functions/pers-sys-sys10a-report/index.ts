@@ -42,6 +42,18 @@ const ALT_GAP_LIMIT = 12.5;
 const MIN_ODDS_FLOOR = 1.25;
 const MIN_ODDS_CEIL = 2.20;
 
+// Manual tactical conflict overlay — display-only recognised reason codes.
+// Consumed from optional per-game fields if present; safe/inactive by default.
+const RECOGNISED_CONFLICT_REASONS = new Set<string>([
+  "recent_tactical_under_conflict",
+  "recent_defensive_shift_conflict",
+  "opponent_scoring_contribution_risk",
+  "favourite_blowout_without_total_support",
+  "pod_or_source_under_conflict",
+  "analyst_under_conflict",
+  "market_total_high_vs_recent_shape",
+]);
+
 function pctToRate(v: number | null | undefined): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);
@@ -482,10 +494,65 @@ Deno.serve(async (req) => {
 
       const venue_caution = venueCautionFlags(g.venue, main_lean, passingBandsForVenueCaution);
 
-      // Actionability gate
+      // ---------- Manual tactical conflict overlay (display-only) ----------
+      // Read optional per-game fields if present; safe/inactive when absent.
+      const ga: any = g;
+      const rawReasons: string[] = Array.isArray(ga.conflict_reasons)
+        ? ga.conflict_reasons.filter((r: unknown) => typeof r === "string")
+        : (typeof ga.conflict_reason === "string" && ga.conflict_reason
+            ? [ga.conflict_reason]
+            : (typeof ga.manual_conflict_type === "string" && ga.manual_conflict_type
+                ? [ga.manual_conflict_type]
+                : []));
+      const recognisedConflictReasons = rawReasons.filter((r) => RECOGNISED_CONFLICT_REASONS.has(r));
+      const manualConflictFlag =
+        ga.manual_conflict_flag === true ||
+        ga.tactical_conflict_flag === true ||
+        ga.conflict_warning === true;
+      const manualConflictNote: string | null =
+        (typeof ga.manual_conflict_note === "string" && ga.manual_conflict_note) ||
+        (typeof ga.analyst_conflict_note === "string" && ga.analyst_conflict_note) ||
+        null;
+
+      const manualConflictTriggered =
+        main_lean === "MAIN_TOTAL_OVER" &&
+        eligibleAltBands.length > 0 &&
+        (manualConflictFlag || recognisedConflictReasons.length > 0);
+      const recentFormWarningTriggered =
+        main_lean === "MAIN_TOTAL_OVER" && recent_form_warning_main_over;
+
+      // Actionability gate (unchanged: model output preserved)
       const mainActionable = main_stake_guidance_u > 0;
       const altActionable = eligibleAltBands.length > 0;
       const actionable = mainActionable || altActionable;
+
+      // Display precedence: manual conflict > recent-form > normal.
+      let display_status: string = "NORMAL";
+      let conflict_warning_active = false;
+      let conflict_warning_type: "manual_tactical" | "recent_form" | null = null;
+      let conflict_warning_reasons: string[] = [];
+      let conflict_warning_note: string | null = null;
+      let execution_default_units: number = main_stake_guidance_u;
+      let include_in_best_bets = actionable;
+      let include_in_multis = actionable;
+      if (manualConflictTriggered) {
+        display_status = "CONFLICT PASS / PRICE CHECK ONLY";
+        conflict_warning_active = true;
+        conflict_warning_type = "manual_tactical";
+        conflict_warning_reasons = recognisedConflictReasons.length ? recognisedConflictReasons : rawReasons;
+        conflict_warning_note = manualConflictNote;
+        execution_default_units = 0;
+        include_in_best_bets = false;
+        include_in_multis = false;
+      } else if (recentFormWarningTriggered) {
+        display_status = "RECENT FORM WARNING / PRICE CHECK ONLY";
+        conflict_warning_active = true;
+        conflict_warning_type = "recent_form";
+        conflict_warning_reasons = ["recent_form_conflicts_with_main_over"];
+        execution_default_units = 0;
+        include_in_best_bets = false;
+        include_in_multis = false;
+      }
 
       const base = {
         ...out,
@@ -503,12 +570,21 @@ Deno.serve(async (req) => {
         recent_gap,
         recent_form_overlay_applied,
         recent_form_overlay_action,
+        recent_form_warning_against_main_over: !!recent_form_warning_main_over,
         recent_form_sample: {
           home_games: homeRecentTotals.length,
           away_games: awayRecentTotals.length,
           sufficient: sufficient_recent_sample,
         },
         overlay_warnings,
+        display_status,
+        conflict_warning_active,
+        conflict_warning_type,
+        conflict_warning_reasons,
+        conflict_warning_note,
+        execution_default_units,
+        include_in_best_bets,
+        include_in_multis,
       };
 
       if (!actionable) {

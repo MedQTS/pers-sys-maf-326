@@ -50,6 +50,19 @@ type Candidate = {
   main_lean?: string;
   main_stake_guidance_u?: number;
   alt_bands?: AltBand[];
+  // Warning/conflict metadata (added by report; safe/absent by default)
+  display_status?: string;
+  conflict_warning_active?: boolean;
+  conflict_warning_type?: "manual_tactical" | "recent_form" | null;
+  conflict_warning_reasons?: string[];
+  conflict_warning_note?: string | null;
+  execution_default_units?: number;
+  include_in_best_bets?: boolean;
+  include_in_multis?: boolean;
+  recent_form_warning_against_main_over?: boolean;
+  main_lean?: string;
+  main_stake_guidance_u?: number;
+  alt_bands?: AltBand[];
   cascade?: null | {
     total_exposure_cap_u: number;
     anchor: { band: number; target_line?: number; stake_u: number; min_acceptable_odds: number | null; note: string };

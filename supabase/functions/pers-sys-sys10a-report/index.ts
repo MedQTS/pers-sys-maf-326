@@ -42,6 +42,18 @@ const ALT_GAP_LIMIT = 12.5;
 const MIN_ODDS_FLOOR = 1.25;
 const MIN_ODDS_CEIL = 2.20;
 
+// Manual tactical conflict overlay — display-only recognised reason codes.
+// Consumed from optional per-game fields if present; safe/inactive by default.
+const RECOGNISED_CONFLICT_REASONS = new Set<string>([
+  "recent_tactical_under_conflict",
+  "recent_defensive_shift_conflict",
+  "opponent_scoring_contribution_risk",
+  "favourite_blowout_without_total_support",
+  "pod_or_source_under_conflict",
+  "analyst_under_conflict",
+  "market_total_high_vs_recent_shape",
+]);
+
 function pctToRate(v: number | null | undefined): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);

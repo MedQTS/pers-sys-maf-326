@@ -1,0 +1,36 @@
+{
+    "doc_id":  "pers-sys-live-operation-and-audit-map",
+    "doc_title":  "Pers Sys - Live Operation and Audit Map",
+    "read_mode":  "indexed_chunked",
+    "version_date":  "2026-07-10",
+    "last_indexed":  "2026-07-10T11:23:31+10:00",
+    "chunk_count":  4,
+    "total_size_bytes":  20039,
+    "combined_sha256":  "47405699c3f9cbf588523d6406eaa662fcdef1d2477002172a5439684c94e33d",
+    "chunks":  [
+                   {
+                       "name":  "001 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "relative_path":  "Chunks\\001 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "size_bytes":  6153,
+                       "sha256":  "c00386ad8930b5d810a65ce27374d59db55bed6efda87b7d5383365f7634cce3"
+                   },
+                   {
+                       "name":  "002 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "relative_path":  "Chunks\\002 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "size_bytes":  5972,
+                       "sha256":  "fb9cf5a0ac4fb60f918e4c91dd19daaf466ac5b4f8dad34af04bd1cc72570fb7"
+                   },
+                   {
+                       "name":  "003 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "relative_path":  "Chunks\\003 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "size_bytes":  6186,
+                       "sha256":  "c878ac131c347b6a5a95a9a7cac5ede0711ed69aa624709f5bbdbbe0a717f34b"
+                   },
+                   {
+                       "name":  "004 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "relative_path":  "Chunks\\004 - Pers Sys - Live Operation and Audit Map - Chunk Copy.md",
+                       "size_bytes":  1728,
+                       "sha256":  "4cffb6957bc29ce5c4f1d17cb5f1c2d722e4829d6e5d3f8ad8e46ae4109936be"
+                   }
+               ]
+}

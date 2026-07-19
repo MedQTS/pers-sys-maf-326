@@ -1,0 +1,30 @@
+{
+    "doc_id":  "pers-sys-weather-scope",
+    "doc_title":  "Pers Sys - Weather Scope",
+    "read_mode":  "indexed_chunked",
+    "version_date":  "2026-07-10",
+    "last_indexed":  "2026-07-10T11:23:31+10:00",
+    "chunk_count":  3,
+    "total_size_bytes":  17184,
+    "combined_sha256":  "914739ca22989e6851a55152020238a65442912f9cdefdb12a74793ca3615bc8",
+    "chunks":  [
+                   {
+                       "name":  "001 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "relative_path":  "Chunks\\001 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "size_bytes":  6125,
+                       "sha256":  "f39e9feffa56f300f7aaa96dca7a4b9e5a16fc5be88a5940ad66a733916c439e"
+                   },
+                   {
+                       "name":  "002 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "relative_path":  "Chunks\\002 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "size_bytes":  5956,
+                       "sha256":  "8a04352793f007a738b5297c5f3201f028ea15c2fa7a6abf0c7d4ded4eb53a6d"
+                   },
+                   {
+                       "name":  "003 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "relative_path":  "Chunks\\003 - Pers Sys - Weather Scope - Chunk Copy.md",
+                       "size_bytes":  5103,
+                       "sha256":  "c398048d1c20ba045cf774973a3e8a0ec4ffa453648bb344e54cfbacdad8b28f"
+                   }
+               ]
+}

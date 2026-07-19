@@ -1,0 +1,48 @@
+{
+    "doc_id":  "pers-sys-project-snapshot",
+    "doc_title":  "Pers Sys - Project Snapshot",
+    "read_mode":  "indexed_chunked",
+    "version_date":  "2026-07-10",
+    "last_indexed":  "2026-07-10T11:23:31+10:00",
+    "chunk_count":  6,
+    "total_size_bytes":  30243,
+    "combined_sha256":  "be693ff432b05474d3998bb957f86e01db9b662b31cfccf0409d06401618e648",
+    "chunks":  [
+                   {
+                       "name":  "001 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\001 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  6098,
+                       "sha256":  "47a8a8a85996706a9615d2e2b1641908e7f754c4fc9366c5db162d7a9d4ee0eb"
+                   },
+                   {
+                       "name":  "002 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\002 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  6093,
+                       "sha256":  "7881d4f916a6a9e8f6b4e4ba5db02c81def30536547ee53cdff1685e138551ed"
+                   },
+                   {
+                       "name":  "003 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\003 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  4760,
+                       "sha256":  "c19bc2c64ab98011d255284bf56994967ad12ada67d115b7952b01cfc6619887"
+                   },
+                   {
+                       "name":  "004 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\004 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  5675,
+                       "sha256":  "82f18e124765cbcbcf9923f42d32845a2c7b0e23fb836085c524960d92668d30"
+                   },
+                   {
+                       "name":  "005 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\005 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  6138,
+                       "sha256":  "2d23bf397e2970309fced8ffb0d9592f1894c10b668030c37ea57ab21edca2b3"
+                   },
+                   {
+                       "name":  "006 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "relative_path":  "Chunks\\006 - Pers Sys - Project Snapshot - Chunk Copy.md",
+                       "size_bytes":  1479,
+                       "sha256":  "cc23a929a9bfbd60ceadd949fcb9b027f8fa85c86e386bfda37be15802aee1d4"
+                   }
+               ]
+}

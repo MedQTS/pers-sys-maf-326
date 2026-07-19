@@ -1,0 +1,30 @@
+{
+    "doc_id":  "pers-sys-ai-operating-read-guide",
+    "doc_title":  "Pers Sys - AI Operating Read Guide",
+    "read_mode":  "indexed_chunked",
+    "version_date":  "2026-07-10",
+    "last_indexed":  "2026-07-10T11:23:30+10:00",
+    "chunk_count":  3,
+    "total_size_bytes":  16112,
+    "combined_sha256":  "f17ad2d9a5184555e9ae0f663508fe9768305b2f474fea5ac9a2161e11635e61",
+    "chunks":  [
+                   {
+                       "name":  "001 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "relative_path":  "Chunks\\001 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "size_bytes":  6178,
+                       "sha256":  "4fb419ad8382d008d0130ae9bae477d4beaf4af322ed34408231c151f178bffe"
+                   },
+                   {
+                       "name":  "002 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "relative_path":  "Chunks\\002 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "size_bytes":  6112,
+                       "sha256":  "0603a0413239e5514acf6bc21909728599d981821347fa552fa765a7cf172852"
+                   },
+                   {
+                       "name":  "003 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "relative_path":  "Chunks\\003 - Pers Sys - AI Operating Read Guide - Chunk Copy.md",
+                       "size_bytes":  3822,
+                       "sha256":  "221e2bf50c45dbce89ae15a8c45f53c981a3e04015b8a15729f6ed45b1b03b9e"
+                   }
+               ]
+}

@@ -1,0 +1,36 @@
+{
+    "doc_id":  "pers-sys-canonical-architecture",
+    "doc_title":  "Pers Sys - Canonical Architecture",
+    "read_mode":  "indexed_chunked",
+    "version_date":  "2026-07-10",
+    "last_indexed":  "2026-07-10T11:23:30+10:00",
+    "chunk_count":  4,
+    "total_size_bytes":  22544,
+    "combined_sha256":  "54fe1df160c2e17ed30411ce10ff81a7169debfa3b5556e2b5531a50aec6381c",
+    "chunks":  [
+                   {
+                       "name":  "001 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "relative_path":  "Chunks\\001 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "size_bytes":  5784,
+                       "sha256":  "258f1c3c5aee09e59b2e83e9a655a833bf48c5c71773007baeca661b267454fb"
+                   },
+                   {
+                       "name":  "002 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "relative_path":  "Chunks\\002 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "size_bytes":  6114,
+                       "sha256":  "ccb21cc0618a5fcead3addf9c6ef236ea4aa487005f3bc3db7c5c5ca8045c09e"
+                   },
+                   {
+                       "name":  "003 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "relative_path":  "Chunks\\003 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "size_bytes":  6069,
+                       "sha256":  "acd6b185ee69389068c4da2b2acc0000c71e1d02af4642fe00b766adb599eb88"
+                   },
+                   {
+                       "name":  "004 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "relative_path":  "Chunks\\004 - Pers Sys - Canonical Architecture - Chunk Copy.md",
+                       "size_bytes":  4577,
+                       "sha256":  "51562a53c76eecc3f7f53fdd2243a246b827dcd868d62c5d3d33943f83b97e4b"
+                   }
+               ]
+}

@@ -1,14 +1,17 @@
 // SYS_10A Manual Total Guide — notification pathway.
 //
 // Fully isolated from the ACTION NOW / T30 alerter.
-// - Calls pers-sys-sys10a-report (read-only).
+// - Calls pers-sys-sys10a-report for guide generation.
 // - Sends a single Postmark email if at least one ACTIONABLE candidate exists.
-// - No DB writes. No signals. No bet RPCs. No alert dedupe tables touched.
+// - No signals. No bets. No alert dedupe writes.
+// - May perform non-fatal weather-only seed writes to
+//   pers_sys_weather_snapshots / pers_sys_weather_assessments before rendering.
 // - Wording/layout only: weather is NOT included in SYS_10A email decisioning.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 type AltBand = {
@@ -36,6 +39,77 @@ type WeatherBlockDisplay = {
   no_data: boolean;
 };
 
+type WeatherSeedResult = {
+  attempted: boolean;
+  game_ids: string[];
+  errors: Array<{
+    game_id: string;
+    status?: number;
+    response?: unknown;
+    error?: string;
+  }>;
+};
+
+function uniqueGuideGameIds(candidates: Candidate[]): string[] {
+  return Array.from(
+    new Set(
+      candidates
+        .filter((c) => !isRoofedVenue(c.venue))
+        .map((c) => c.game_id)
+        .filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0,
+        ),
+    ),
+  );
+}
+
+async function seedSys10aWeatherForGuideGames(
+  supabaseUrl: string,
+  anonKey: string,
+  gameIds: string[],
+): Promise<WeatherSeedResult> {
+  const result: WeatherSeedResult = {
+    attempted: gameIds.length > 0,
+    game_ids: gameIds,
+    errors: [],
+  };
+  for (const gameId of gameIds) {
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/pers-sys-weather-seed-precheck`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${anonKey}`,
+          },
+          body: JSON.stringify({
+            mode: "PRECHECK_ONLY",
+            game_id: gameId,
+            snapshot_stage: "T30",
+            assessment_stage: "T30",
+            system_codes: ["SYS_10A"],
+          }),
+        },
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !(json as any)?.ok) {
+        result.errors.push({
+          game_id: gameId,
+          status: res.status,
+          response: json,
+        });
+      }
+    } catch (err) {
+      result.errors.push({
+        game_id: gameId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return result;
+}
+
 type Candidate = {
   game_id: string;
   home: string | null;
@@ -62,11 +136,27 @@ type Candidate = {
   recent_form_warning_against_main_over?: boolean;
   cascade?: null | {
     total_exposure_cap_u: number;
-    anchor: { band: number; target_line?: number; stake_u: number; min_acceptable_odds: number | null; note: string };
-    upside: null | { band: number; target_line?: number; stake_u: number; min_acceptable_odds: number | null; note: string };
+    anchor: {
+      band: number;
+      target_line?: number;
+      stake_u: number;
+      min_acceptable_odds: number | null;
+      note: string;
+    };
+    upside: null | {
+      band: number;
+      target_line?: number;
+      stake_u: number;
+      min_acceptable_odds: number | null;
+      note: string;
+    };
   };
   venue_caution?: string[];
-  samples?: { home_home_games: number; away_away_games: number; venue_games: number };
+  samples?: {
+    home_home_games: number;
+    away_away_games: number;
+    venue_games: number;
+  };
   status: "CANDIDATE" | "SUPPRESSED";
   suppression_reason?: string | null;
   alt_over_suppressed_due_main_under_lean?: boolean;
@@ -108,47 +198,95 @@ function isRoofedVenue(venue: string | null | undefined): boolean {
 // W1 display-only weather renderer. Uses the weather block from the report
 // payload; falls back to venue-based roof detection only when the block is
 // absent entirely. Does NOT affect stake or pick logic.
-function weatherStatus(c: Candidate): { weather: string; status: string; roofed: boolean } {
+function weatherStatus(c: Candidate): {
+  weather: string;
+  status: string;
+  roofed: boolean;
+} {
   const w = c.weather;
   const venue = c.venue;
   if (!w) {
     if (isRoofedVenue(venue)) {
-      return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+      return {
+        weather: "ROOF / INDOOR",
+        status: "PRICE CHECK ONLY",
+        roofed: true,
+      };
     }
-    return { weather: "CHECK WEATHER FIRST", status: "no weather block", roofed: false };
+    return {
+      weather: "CHECK WEATHER FIRST",
+      status: "no weather block",
+      roofed: false,
+    };
   }
   if (w.no_data) {
     if (isRoofedVenue(venue)) {
-      return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+      return {
+        weather: "ROOF / INDOOR",
+        status: "PRICE CHECK ONLY",
+        roofed: true,
+      };
     }
-    return { weather: "CHECK WEATHER FIRST", status: "no weather assessment found", roofed: false };
+    return {
+      weather: "CHECK WEATHER FIRST",
+      status: "no weather assessment found",
+      roofed: false,
+    };
   }
   const src = w.source_system_code ?? "?";
   const fbTag = w.fallback_used ? " (fallback SYS_8)" : "";
   const outcome = String(w.outcome ?? "").toUpperCase();
   switch (outcome) {
     case "FULL_STAKE":
-      return { weather: "Weather OK (clear)", status: `shadow · source ${src}${fbTag}`, roofed: false };
+      return {
+        weather: "Weather OK (clear)",
+        status: `shadow · source ${src}${fbTag}`,
+        roofed: false,
+      };
     case "HALF_STAKE":
-      return { weather: "Weather caution — half-stake shadow", status: `shadow · source ${src}${fbTag}`, roofed: false };
+      return {
+        weather: "Weather caution — half-stake shadow",
+        status: `shadow · source ${src}${fbTag}`,
+        roofed: false,
+      };
     case "PASS":
-      return { weather: "Weather red — would suppress (shadow)", status: `shadow · source ${src}${fbTag}`, roofed: false };
+      return {
+        weather: "Weather red — would suppress (shadow)",
+        status: `shadow · source ${src}${fbTag}`,
+        roofed: false,
+      };
     case "NOT_APPLICABLE":
-      return { weather: "Roof / indoor — weather not applicable", status: `shadow · source ${src}${fbTag}`, roofed: true };
+      return {
+        weather: "Roof / indoor — weather not applicable",
+        status: `shadow · source ${src}${fbTag}`,
+        roofed: true,
+      };
     default:
       if (isRoofedVenue(venue)) {
-        return { weather: "ROOF / INDOOR", status: "PRICE CHECK ONLY", roofed: true };
+        return {
+          weather: "ROOF / INDOOR",
+          status: "PRICE CHECK ONLY",
+          roofed: true,
+        };
       }
-      return { weather: "CHECK WEATHER FIRST", status: `unknown outcome${outcome ? `: ${outcome}` : ""}`, roofed: false };
+      return {
+        weather: "CHECK WEATHER FIRST",
+        status: `unknown outcome${outcome ? `: ${outcome}` : ""}`,
+        roofed: false,
+      };
   }
 }
 
 function readableLean(lean: string | undefined): string {
   switch (lean) {
-    case "MAIN_TOTAL_OVER": return "Over";
-    case "MAIN_TOTAL_UNDER": return "Under";
-    case "PASS": return "No main-total bet";
-    default: return "No main-total bet";
+    case "MAIN_TOTAL_OVER":
+      return "Over";
+    case "MAIN_TOTAL_UNDER":
+      return "Under";
+    case "PASS":
+      return "No main-total bet";
+    default:
+      return "No main-total bet";
   }
 }
 
@@ -179,9 +317,9 @@ function warningInfo(c: Candidate): WarningInfo | null {
     const note = (c.conflict_warning_note ?? "").trim();
     const reasonText = note
       ? note
-      : (codes.length
-          ? `Recognised reason(s): ${codes.join(", ")}.`
-          : "Recent tactical under profile conflicts with SYS_10A Over.");
+      : codes.length
+        ? `Recognised reason(s): ${codes.join(", ")}.`
+        : "Recent tactical under profile conflicts with SYS_10A Over.";
     return {
       active: true,
       type: "manual_tactical",
@@ -197,7 +335,8 @@ function warningInfo(c: Candidate): WarningInfo | null {
       type: "recent_form",
       headline: "WARNING: Recent-form conflict",
       statusText: c.display_status ?? "RECENT FORM WARNING / PRICE CHECK ONLY",
-      reasonText: "SYS_10A model remains Over, but recent scoring profile is below market.",
+      reasonText:
+        "SYS_10A model remains Over, but recent scoring profile is below market.",
       reasonCodes: c.conflict_warning_reasons ?? [],
     };
   }
@@ -241,9 +380,9 @@ function renderMainHtml(c: Candidate): string {
   const warn = warningInfo(c);
   const stakeLine = warn
     ? `Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
-    : (w.roofed
-        ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-        : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`);
+    : w.roofed
+      ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+      : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
   const statusText = warn ? warn.statusText : w.status;
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
@@ -264,9 +403,9 @@ function renderMainText(c: Candidate): string {
   const warn = warningInfo(c);
   const stakeLine = warn
     ? `  Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
-    : (w.roofed
-        ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-        : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`);
+    : w.roofed
+      ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
+      : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
   const statusText = warn ? warn.statusText : w.status;
   const lines = [
     `${c.home} v ${c.away} — ${c.venue}`,
@@ -294,25 +433,34 @@ function renderAltHtml(c: Candidate): string {
   if (warn) {
     // Downgraded execution: show bands as technically eligible only.
     for (const b of elig) {
-      checks.push(`Over ${fmt(b.target_line ?? b.band, 1)} — technically eligible (min acceptable odds ${fmt(b.min_acceptable_odds, 2)})`);
+      checks.push(
+        `Over ${fmt(b.target_line ?? b.band, 1)} — technically eligible (min acceptable odds ${fmt(b.min_acceptable_odds, 2)})`,
+      );
     }
   } else if (c.cascade) {
     const a = c.cascade.anchor;
-    checks.push(`Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds &ge; ${fmt(a.min_acceptable_odds, 2)}`);
+    checks.push(
+      `Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds &ge; ${fmt(a.min_acceptable_odds, 2)}`,
+    );
     if (c.cascade.upside) {
       const u = c.cascade.upside;
-      checks.push(`Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds &ge; ${fmt(u.min_acceptable_odds, 2)}`);
+      checks.push(
+        `Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds &ge; ${fmt(u.min_acceptable_odds, 2)}`,
+      );
     }
     checks.push(`Cap: ${fmt(c.cascade.total_exposure_cap_u, 1)}u`);
   } else {
     for (const b of elig) {
-      checks.push(`Over ${fmt(b.target_line ?? b.band, 1)} — min acceptable odds ${fmt(b.min_acceptable_odds, 2)}`);
+      checks.push(
+        `Over ${fmt(b.target_line ?? b.band, 1)} — min acceptable odds ${fmt(b.min_acceptable_odds, 2)}`,
+      );
     }
   }
 
-  const weatherNote = warn || w.roofed
-    ? ""
-    : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
+  const weatherNote =
+    warn || w.roofed
+      ? ""
+      : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
   const statusText = warn ? warn.statusText : w.status;
 
   return `
@@ -348,27 +496,37 @@ function renderAltText(c: Candidate): string {
   lines.push(`  Model output:`);
   if (warn) {
     for (const b of elig) {
-      lines.push(`    - Over ${fmt(b.target_line ?? b.band, 1)}: technically eligible (min odds ${fmt(b.min_acceptable_odds, 2)})`);
+      lines.push(
+        `    - Over ${fmt(b.target_line ?? b.band, 1)}: technically eligible (min odds ${fmt(b.min_acceptable_odds, 2)})`,
+      );
     }
   } else if (c.cascade) {
     const a = c.cascade.anchor;
-    lines.push(`    - Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds >= ${fmt(a.min_acceptable_odds, 2)}`);
+    lines.push(
+      `    - Anchor: Over ${fmt(a.target_line ?? a.band, 1)} — ${fmt(a.stake_u, 1)}u if odds >= ${fmt(a.min_acceptable_odds, 2)}`,
+    );
     if (c.cascade.upside) {
       const u = c.cascade.upside;
-      lines.push(`    - Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds >= ${fmt(u.min_acceptable_odds, 2)}`);
+      lines.push(
+        `    - Upside: Over ${fmt(u.target_line ?? u.band, 1)} — ${fmt(u.stake_u, 1)}u if odds >= ${fmt(u.min_acceptable_odds, 2)}`,
+      );
     }
     lines.push(`    - Cap: ${fmt(c.cascade.total_exposure_cap_u, 1)}u`);
   } else {
     for (const b of elig) {
-      lines.push(`    - Over ${fmt(b.target_line ?? b.band, 1)}: min odds ${fmt(b.min_acceptable_odds, 2)}`);
+      lines.push(
+        `    - Over ${fmt(b.target_line ?? b.band, 1)}: min odds ${fmt(b.min_acceptable_odds, 2)}`,
+      );
     }
   }
-  if (!warn && !w.roofed) lines.push(`  Stake guide applies only if weather passes.`);
+  if (!warn && !w.roofed)
+    lines.push(`  Stake guide applies only if weather passes.`);
   return lines.join("\n");
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response(null, { headers: corsHeaders });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -379,33 +537,85 @@ Deno.serve(async (req) => {
     const messageStream = Deno.env.get("POSTMARK_MESSAGE_STREAM") ?? "outbound";
 
     if (!supabaseUrl || !anonKey) {
-      return new Response(JSON.stringify({ ok: false, error: "missing_supabase_env" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ ok: false, error: "missing_supabase_env" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
     if (!postmarkToken || !fromEmail || !toEmail) {
       return new Response(
         JSON.stringify({ ok: false, error: "missing_email_secrets" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
-    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const body =
+      req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const daysAhead = Number(body.days_ahead ?? 10);
     const dryRun = body.dry_run === true;
+    const seedWeather = dryRun
+      ? body.seed_weather === true
+      : body.seed_weather !== false;
 
-    const reportRes = await fetch(`${supabaseUrl}/functions/v1/pers-sys-sys10a-report`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
-      body: JSON.stringify({ days_ahead: daysAhead }),
-    });
-    const reportJson = await reportRes.json().catch(() => null);
+    const loadReport = async () => {
+      const reportRes = await fetch(
+        `${supabaseUrl}/functions/v1/pers-sys-sys10a-report`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${anonKey}`,
+          },
+          body: JSON.stringify({ days_ahead: daysAhead }),
+        },
+      );
+      const reportJson = await reportRes.json().catch(() => null);
+      if (!reportRes.ok || !reportJson?.ok) {
+        throw { status: reportRes.status, response: reportJson };
+      }
+      return reportJson;
+    };
 
-    if (!reportRes.ok || !reportJson?.ok) {
+    let reportJson: any;
+    let weatherSeed: WeatherSeedResult = {
+      attempted: false,
+      game_ids: [],
+      errors: [],
+    };
+    try {
+      const initialReportJson = await loadReport();
+      reportJson = initialReportJson;
+      if (seedWeather) {
+        const seedGameIds = uniqueGuideGameIds(
+          (initialReportJson.candidates ?? []) as Candidate[],
+        );
+        weatherSeed = await seedSys10aWeatherForGuideGames(
+          supabaseUrl,
+          anonKey,
+          seedGameIds,
+        );
+        // Reload the read-only report so the email renders the assessments just seeded.
+        reportJson = await loadReport();
+      }
+    } catch (err) {
+      const e = err as { status?: number; response?: unknown };
       return new Response(
-        JSON.stringify({ ok: false, error: "sys10a_report_failed", status: reportRes.status, response: reportJson }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: false,
+          error: "sys10a_report_failed",
+          status: e.status,
+          response: e.response ?? err,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -415,7 +625,10 @@ Deno.serve(async (req) => {
     const suppression_breakdown = reportJson.suppression_breakdown ?? {};
 
     const mainSection = candidates.filter(
-      (c) => (c.main_lean === "MAIN_TOTAL_OVER" || c.main_lean === "MAIN_TOTAL_UNDER") && (c.main_stake_guidance_u ?? 0) > 0,
+      (c) =>
+        (c.main_lean === "MAIN_TOTAL_OVER" ||
+          c.main_lean === "MAIN_TOTAL_UNDER") &&
+        (c.main_stake_guidance_u ?? 0) > 0,
     );
     const altSection = candidates.filter((c) => eligibleAltBands(c).length > 0);
 
@@ -428,6 +641,7 @@ Deno.serve(async (req) => {
           evaluated: all.length,
           suppressed_count: suppressed.length,
           suppression_breakdown,
+          weather_seed: weatherSeed,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -460,7 +674,7 @@ Deno.serve(async (req) => {
 
         <hr style="margin:20px 0;border:none;border-top:1px solid #ddd;">
         <p style="margin:6px 0;color:#666;font-size:12px;">
-          Generated: ${esc(reportJson.generated_at)} · Actionable checks: ${candidates.length} · Suppressed: ${suppressed.length}
+          Generated: ${esc(reportJson.generated_at)} · Actionable checks: ${candidates.length} · Suppressed: ${suppressed.length} · Weather seed errors: ${weatherSeed.errors.length}
         </p>
         <p style="margin:6px 0;color:#666;font-size:12px;">
           SYS_10A is a manual guide only. It does not place bets or create ACTION NOW alerts.
@@ -473,18 +687,24 @@ Deno.serve(async (req) => {
       "Weather is displayed for information only; SYS_10A stake and pick logic are unchanged in W1.",
       "",
       "Main Total Checks",
-      mainSection.length ? mainSection.map(renderMainText).join("\n\n") : "  None.",
+      mainSection.length
+        ? mainSection.map(renderMainText).join("\n\n")
+        : "  None.",
       "",
       "Alt-Over Checks",
-      altSection.length ? altSection.map(renderAltText).join("\n\n") : "  None.",
+      altSection.length
+        ? altSection.map(renderAltText).join("\n\n")
+        : "  None.",
       "",
       "NO-ACTION NOTES",
       suppressionEntries.length
-        ? suppressionEntries.map(([k, v]) => `  - ${readableSuppression(k)}: ${v}`).join("\n")
+        ? suppressionEntries
+            .map(([k, v]) => `  - ${readableSuppression(k)}: ${v}`)
+            .join("\n")
         : "  None.",
       "",
       "---",
-      `Generated: ${reportJson.generated_at} | Actionable checks: ${candidates.length} | Suppressed: ${suppressed.length}`,
+      `Generated: ${reportJson.generated_at} | Actionable checks: ${candidates.length} | Suppressed: ${suppressed.length} | Weather seed errors: ${weatherSeed.errors.length}`,
       "SYS_10A is a manual guide only. It does not place bets or create ACTION NOW alerts.",
     ].join("\n");
 
@@ -493,12 +713,15 @@ Deno.serve(async (req) => {
         JSON.stringify({
           ok: true,
           dry_run: true,
+          seed_weather: seedWeather,
+          dry_run_weather_seed_writes_possible: seedWeather,
           subject,
           actionable_candidates: candidates.length,
           suppressed_count: suppressed.length,
           suppression_breakdown,
           main_section_count: mainSection.length,
           alt_section_count: altSection.length,
+          weather_seed: weatherSeed,
           html: htmlBody,
           text: textBody,
         }),
@@ -526,12 +749,26 @@ Deno.serve(async (req) => {
       body: JSON.stringify(postmarkPayload),
     });
     const pmText = await pm.text();
-    const pmParsed = (() => { try { return JSON.parse(pmText); } catch { return pmText; } })();
+    const pmParsed = (() => {
+      try {
+        return JSON.parse(pmText);
+      } catch {
+        return pmText;
+      }
+    })();
 
     if (!pm.ok) {
       return new Response(
-        JSON.stringify({ ok: false, error: "postmark_send_failed", postmark_status: pm.status, postmark_response: pmParsed }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: false,
+          error: "postmark_send_failed",
+          postmark_status: pm.status,
+          postmark_response: pmParsed,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -542,6 +779,7 @@ Deno.serve(async (req) => {
         actionable_candidates: candidates.length,
         suppressed_count: suppressed.length,
         suppression_breakdown,
+        weather_seed: weatherSeed,
         subject,
         postmark_response: pmParsed,
       }),

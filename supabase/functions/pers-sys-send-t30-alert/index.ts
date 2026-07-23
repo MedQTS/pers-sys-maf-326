@@ -2,7 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -142,7 +143,9 @@ function ruleSummary(signal: SignalRow): string {
     const market = oc["market"];
     const req = oc["required_execution_snapshot"];
     if (typeof market === "string" && market) {
-      return req ? `Overlay ${market} requires ${String(req)}` : `Overlay ${market}`;
+      return req
+        ? `Overlay ${market} requires ${String(req)}`
+        : `Overlay ${market}`;
     }
   }
 
@@ -152,7 +155,9 @@ function ruleSummary(signal: SignalRow): string {
     const type = ov["type"];
     const dep = ov["depends_on"];
     if (typeof type === "string" && type) {
-      return dep ? `Overlay ${type} depends on ${String(dep)}` : `Overlay ${type}`;
+      return dep
+        ? `Overlay ${type} depends on ${String(dep)}`
+        : `Overlay ${type}`;
     }
   }
 
@@ -164,7 +169,9 @@ function ruleSummary(signal: SignalRow): string {
   return "T30 READY";
 }
 
-function signalKind(signal: SignalRow): "PRIMARY / BASE" | "AMPLIFIER / OVERLAY" {
+function signalKind(
+  signal: SignalRow,
+): "PRIMARY / BASE" | "AMPLIFIER / OVERLAY" {
   const r = safeJson(signal.reason_json) || {};
   const overlayChild = r["overlay_child"];
   if (overlayChild && typeof overlayChild === "object") {
@@ -184,17 +191,15 @@ async function sha256Hex(input: string): Promise<string> {
 function stableBetFingerprint(signal: SignalRow): string {
   const legType = String(signal.leg_type ?? "").toUpperCase();
   const side = String(signal.side ?? "").toUpperCase();
-  const line = signal.line_at_bet == null ? "" : String(Number(signal.line_at_bet));
-  return [
-    signal.game_id,
-    signal.system_code,
-    legType,
-    side,
-    line,
-  ].join("|");
+  const line =
+    signal.line_at_bet == null ? "" : String(Number(signal.line_at_bet));
+  return [signal.game_id, signal.system_code, legType, side, line].join("|");
 }
 
-async function changeHashForRow(signal: SignalRow, preview: PreviewResult): Promise<string> {
+async function changeHashForRow(
+  signal: SignalRow,
+  preview: PreviewResult,
+): Promise<string> {
   const payload = [
     signal.game_id,
     signal.system_code,
@@ -212,8 +217,16 @@ async function changeHashForRow(signal: SignalRow, preview: PreviewResult): Prom
 function betMatchesLogged(signal: SignalRow, bet: BetRow): boolean {
   if (signal.game_id !== bet.game_id) return false;
   if (signal.system_code !== bet.system_code) return false;
-  if (String(signal.leg_type ?? "").toUpperCase() !== String(bet.leg_type ?? "").toUpperCase()) return false;
-  if (String(signal.side ?? "").toUpperCase() !== String(bet.side ?? "").toUpperCase()) return false;
+  if (
+    String(signal.leg_type ?? "").toUpperCase() !==
+    String(bet.leg_type ?? "").toUpperCase()
+  )
+    return false;
+  if (
+    String(signal.side ?? "").toUpperCase() !==
+    String(bet.side ?? "").toUpperCase()
+  )
+    return false;
 
   const legType = String(signal.leg_type ?? "").toUpperCase();
   if (legType === "LINE") {
@@ -223,7 +236,10 @@ function betMatchesLogged(signal: SignalRow, bet: BetRow): boolean {
   return true;
 }
 
-function findMatchingLoggedBet(signal: SignalRow, bets: BetRow[]): BetRow | null {
+function findMatchingLoggedBet(
+  signal: SignalRow,
+  bets: BetRow[],
+): BetRow | null {
   return bets.find((bet) => betMatchesLogged(signal, bet)) ?? null;
 }
 
@@ -232,7 +248,8 @@ function backedSelection(signal: SignalRow, game: GameRow | null): string {
   const side = String(signal.side ?? "").toUpperCase();
   const home = game?.home_team?.canonical_name ?? null;
   const away = game?.away_team?.canonical_name ?? null;
-  const lineStr = signal.line_at_bet == null ? "" : ` ${fmtLine(signal.line_at_bet)}`;
+  const lineStr =
+    signal.line_at_bet == null ? "" : ` ${fmtLine(signal.line_at_bet)}`;
 
   if (market === "H2H") {
     if (side === "HOME") return `Back ${home ?? "HOME"}`;
@@ -249,6 +266,33 @@ function backedSelection(signal: SignalRow, game: GameRow | null): string {
   return `Back ${side || "?"}`;
 }
 
+function weatherSummary(signal: SignalRow): string | null {
+  const r = safeJson(signal.reason_json) || {};
+  const weather = r["weather"];
+  if (!weather || typeof weather !== "object") return null;
+  const w = weather as Record<string, unknown>;
+  const parts = [
+    w["weather_status"],
+    w["weather_outcome"],
+    w["weather_active_action"],
+  ]
+    .filter((v) => typeof v === "string" && v.trim().length > 0)
+    .map(String);
+
+  const source =
+    w["weather_active_decisioning_enabled_source"] ??
+    w["weather_active_decisioning_enabled_effective"];
+  if (typeof source === "string" && source.trim()) parts.push(`src=${source}`);
+  if (typeof source === "boolean") parts.push(`active=${source}`);
+
+  const reason = w["weather_reason_code"] ?? w["weather_active_reason"];
+  if (typeof reason === "string" && reason.trim() && !parts.includes(reason)) {
+    parts.push(`reason=${reason}`);
+  }
+
+  return parts.length ? `Weather: ${parts.join(" / ")}` : null;
+}
+
 function buildTextLine(row: CandidateRow): string {
   const signal = row.signal;
   const game = row.game;
@@ -260,22 +304,32 @@ function buildTextLine(row: CandidateRow): string {
   const market = String(signal.leg_type ?? "?").toUpperCase();
   const side = String(signal.side ?? "?").toUpperCase();
   const line = market === "LINE" ? ` ${fmtLine(signal.line_at_bet)}` : "";
-  const price = fmtPrice(preview.price ?? signal.exec_best_price ?? signal.ref_price ?? null);
+  const price = fmtPrice(
+    preview.price ?? signal.exec_best_price ?? signal.ref_price ?? null,
+  );
   const stake = fmtStake(preview.stake_amount ?? null);
   const book = preview.book ?? signal.exec_best_book ?? "—";
   const rule = ruleSummary(signal);
+  const weather = weatherSummary(signal);
+  const weatherText = weather ? ` | ${weather}` : "";
 
-  return `[${row.statusLabel}] ${back} | ${gameText} | ${venue} | ${signal.system_code} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule}`;
+  return `[${row.statusLabel}] ${back} | ${gameText} | ${venue} | ${signal.system_code} | ${market} ${side}${line} | @${price} | $${stake} | ${book} | Rule: ${rule}${weatherText}`;
 }
 
-function buildAcceptedTextLine(signal: SignalRow, game: GameRow | null, bet: BetRow | null): string {
+function buildAcceptedTextLine(
+  signal: SignalRow,
+  game: GameRow | null,
+  bet: BetRow | null,
+): string {
   const back = backedSelection(signal, game);
   const gameText = gameLabel(game);
   const venue = game?.venue ?? "—";
   const market = String(signal.leg_type ?? "?").toUpperCase();
   const side = String(signal.side ?? "?").toUpperCase();
   const line = market === "LINE" ? ` ${fmtLine(signal.line_at_bet)}` : "";
-  const price = fmtPrice(bet?.price ?? signal.exec_best_price ?? signal.ref_price ?? null);
+  const price = fmtPrice(
+    bet?.price ?? signal.exec_best_price ?? signal.ref_price ?? null,
+  );
   const stake = fmtStake(bet?.stake_amount ?? null);
   const book = bet?.book ?? signal.exec_best_book ?? "—";
   const kind = signalKind(signal);
@@ -285,10 +339,15 @@ function buildAcceptedTextLine(signal: SignalRow, game: GameRow | null, bet: Bet
 }
 
 function sortCandidates(a: CandidateRow, b: CandidateRow): number {
-  const ta = a.game?.start_time_aet ? new Date(a.game.start_time_aet).getTime() : 0;
-  const tb = b.game?.start_time_aet ? new Date(b.game.start_time_aet).getTime() : 0;
+  const ta = a.game?.start_time_aet
+    ? new Date(a.game.start_time_aet).getTime()
+    : 0;
+  const tb = b.game?.start_time_aet
+    ? new Date(b.game.start_time_aet).getTime()
+    : 0;
   if (ta !== tb) return ta - tb;
-  if (a.signal.system_code !== b.signal.system_code) return a.signal.system_code.localeCompare(b.signal.system_code);
+  if (a.signal.system_code !== b.signal.system_code)
+    return a.signal.system_code.localeCompare(b.signal.system_code);
   return a.textLine.localeCompare(b.textLine);
 }
 
@@ -298,10 +357,13 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ ok: false, error: "method_not_allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: "method_not_allowed" }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {
@@ -313,10 +375,13 @@ Deno.serve(async (req) => {
     const messageStream = Deno.env.get("POSTMARK_MESSAGE_STREAM") ?? "outbound";
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(JSON.stringify({ ok: false, error: "missing_supabase_env" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ ok: false, error: "missing_supabase_env" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     if (!postmarkToken || !fromEmail || !toEmail) {
@@ -344,7 +409,8 @@ Deno.serve(async (req) => {
 
     const snapshotType = "T30";
     const dryRun = body["dry_run"] === true;
-    const gameId = typeof body["game_id"] === "string" ? body["game_id"].trim() : "";
+    const gameId =
+      typeof body["game_id"] === "string" ? body["game_id"].trim() : "";
 
     if (!gameId) {
       return new Response(
@@ -371,26 +437,53 @@ Deno.serve(async (req) => {
 
     if (!gameCheck) {
       return new Response(
-        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_found", game_id: gameId }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: true,
+          sent: false,
+          skipped_reason: "game_not_found",
+          game_id: gameId,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
     if (gameCheck.status !== "SCHEDULED") {
       return new Response(
-        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_not_scheduled", game_id: gameId, status: gameCheck.status }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: true,
+          sent: false,
+          skipped_reason: "game_not_scheduled",
+          game_id: gameId,
+          status: gameCheck.status,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
     if (new Date(gameCheck.start_time_aet).getTime() <= Date.now()) {
       return new Response(
-        JSON.stringify({ ok: true, sent: false, skipped_reason: "game_start_in_past", game_id: gameId }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          ok: true,
+          sent: false,
+          skipped_reason: "game_start_in_past",
+          game_id: gameId,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
     const { data: signalsData, error: signalsErr } = await supabase
       .from("pers_sys_signals_v2")
-      .select("id,game_id,system_code,model_snapshot,execution_snapshot,signal_status,pass,leg_type,side,line_at_bet,ref_price,exec_best_price,exec_best_book,recommended_units,recommended_bankroll_pct,reason_json,created_at")
+      .select(
+        "id,game_id,system_code,model_snapshot,execution_snapshot,signal_status,pass,leg_type,side,line_at_bet,ref_price,exec_best_price,exec_best_book,recommended_units,recommended_bankroll_pct,reason_json,created_at",
+      )
       .eq("game_id", gameId)
       .eq("execution_snapshot", snapshotType)
       .eq("signal_status", "READY")
@@ -408,7 +501,12 @@ Deno.serve(async (req) => {
           sent: false,
           skipped_reason: "no_ready_t30_signals",
           game_id: gameId,
-          counts: { ready_signals: 0, action_now: 0, previously_sent: 0, logged_excluded: 0 },
+          counts: {
+            ready_signals: 0,
+            action_now: 0,
+            previously_sent: 0,
+            logged_excluded: 0,
+          },
         }),
         {
           status: 200,
@@ -419,14 +517,16 @@ Deno.serve(async (req) => {
 
     const { data: gamesData, error: gamesErr } = await supabase
       .from("pers_sys_games")
-      .select(`
+      .select(
+        `
         id,
         venue,
         round,
         start_time_aet,
         home_team:pers_sys_teams!pers_sys_games_home_team_id_fkey(canonical_name),
         away_team:pers_sys_teams!pers_sys_games_away_team_id_fkey(canonical_name)
-      `)
+      `,
+      )
       .eq("id", gameId);
 
     if (gamesErr) throw gamesErr;
@@ -437,7 +537,9 @@ Deno.serve(async (req) => {
 
     const { data: betsData, error: betsErr } = await supabase
       .from("pers_sys_bets")
-      .select("id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,created_at")
+      .select(
+        "id,game_id,system_code,leg_type,side,line_at_bet,price,book,stake_amount,units,status,created_at",
+      )
       .eq("game_id", gameId)
       .eq("status", "UNSETTLED");
 
@@ -447,7 +549,9 @@ Deno.serve(async (req) => {
 
     const { data: priorItemsData, error: priorItemsErr } = await supabase
       .from("pers_sys_email_alert_items")
-      .select("id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at")
+      .select(
+        "id,game_id,snapshot_type,bet_fingerprint,change_hash,system_code,leg_type,side,line_at_bet,book,price,stake_amount,status_label,created_at",
+      )
       .eq("game_id", gameId)
       .eq("snapshot_type", snapshotType)
       .order("created_at", { ascending: false });
@@ -464,7 +568,9 @@ Deno.serve(async (req) => {
 
     const loggedExcluded: SignalRow[] = [];
     const candidateSignals = signals.filter((signal) => {
-      const matched = unsettledBets.some((bet) => betMatchesLogged(signal, bet));
+      const matched = unsettledBets.some((bet) =>
+        betMatchesLogged(signal, bet),
+      );
       if (matched) loggedExcluded.push(signal);
       return !matched;
     });
@@ -473,26 +579,37 @@ Deno.serve(async (req) => {
     for (const signal of candidateSignals) {
       const previewUnits =
         signal.system_code === "SYS_7"
-          ? (signal.recommended_units ?? Number(safeJson(signal.reason_json)?.["recommended_units"] ?? null))
+          ? (signal.recommended_units ??
+            Number(safeJson(signal.reason_json)?.["recommended_units"] ?? null))
           : null;
 
       const previewPct =
         signal.recommended_bankroll_pct ??
-        Number(safeJson(signal.reason_json)?.["recommended_bankroll_pct"] ?? null);
+        Number(
+          safeJson(signal.reason_json)?.["recommended_bankroll_pct"] ?? null,
+        );
 
-      const { data: previewData, error: previewErr } = await supabase.rpc("preview_leg_stake", {
-        p_game_id: signal.game_id,
-        p_system_code: signal.system_code,
-        p_leg_type: signal.leg_type,
-        p_side: signal.side,
-        p_line_at_bet: signal.line_at_bet ?? null,
-        p_exec_best_price: signal.exec_best_price ?? null,
-        p_exec_best_book: signal.exec_best_book ?? null,
-        p_ref_price: signal.ref_price ?? null,
-        p_units: Number.isFinite(Number(previewUnits)) ? Number(previewUnits) : null,
-        p_recommended_bankroll_pct: Number.isFinite(Number(previewPct)) ? Number(previewPct) : null,
-        p_snapshot_type: signal.execution_snapshot ?? signal.model_snapshot ?? null,
-      });
+      const { data: previewData, error: previewErr } = await supabase.rpc(
+        "preview_leg_stake",
+        {
+          p_game_id: signal.game_id,
+          p_system_code: signal.system_code,
+          p_leg_type: signal.leg_type,
+          p_side: signal.side,
+          p_line_at_bet: signal.line_at_bet ?? null,
+          p_exec_best_price: signal.exec_best_price ?? null,
+          p_exec_best_book: signal.exec_best_book ?? null,
+          p_ref_price: signal.ref_price ?? null,
+          p_units: Number.isFinite(Number(previewUnits))
+            ? Number(previewUnits)
+            : null,
+          p_recommended_bankroll_pct: Number.isFinite(Number(previewPct))
+            ? Number(previewPct)
+            : null,
+          p_snapshot_type:
+            signal.execution_snapshot ?? signal.model_snapshot ?? null,
+        },
+      );
 
       if (previewErr) {
         continue;
@@ -509,7 +626,8 @@ Deno.serve(async (req) => {
 
       let statusLabel: "NEW" | "CHANGED" | "PREVIOUSLY_SENT" = "NEW";
       if (prior) {
-        statusLabel = prior.change_hash === changeHash ? "PREVIOUSLY_SENT" : "CHANGED";
+        statusLabel =
+          prior.change_hash === changeHash ? "PREVIOUSLY_SENT" : "CHANGED";
       }
 
       const row: CandidateRow = {
@@ -527,8 +645,12 @@ Deno.serve(async (req) => {
 
     candidateRows.sort(sortCandidates);
 
-    const actionRows = candidateRows.filter((r) => r.statusLabel === "NEW" || r.statusLabel === "CHANGED");
-    const previousRows = candidateRows.filter((r) => r.statusLabel === "PREVIOUSLY_SENT");
+    const actionRows = candidateRows.filter(
+      (r) => r.statusLabel === "NEW" || r.statusLabel === "CHANGED",
+    );
+    const previousRows = candidateRows.filter(
+      (r) => r.statusLabel === "PREVIOUSLY_SENT",
+    );
 
     const acceptedRows: LoggedExcludedRow[] = loggedExcluded
       .map((signal) => {
@@ -542,10 +664,15 @@ Deno.serve(async (req) => {
         };
       })
       .sort((a, b) => {
-        const ta = a.game?.start_time_aet ? new Date(a.game.start_time_aet).getTime() : 0;
-        const tb = b.game?.start_time_aet ? new Date(b.game.start_time_aet).getTime() : 0;
+        const ta = a.game?.start_time_aet
+          ? new Date(a.game.start_time_aet).getTime()
+          : 0;
+        const tb = b.game?.start_time_aet
+          ? new Date(b.game.start_time_aet).getTime()
+          : 0;
         if (ta !== tb) return ta - tb;
-        if (a.signal.system_code !== b.signal.system_code) return a.signal.system_code.localeCompare(b.signal.system_code);
+        if (a.signal.system_code !== b.signal.system_code)
+          return a.signal.system_code.localeCompare(b.signal.system_code);
         return a.textLine.localeCompare(b.textLine);
       });
 
@@ -583,23 +710,25 @@ Deno.serve(async (req) => {
       ...actionRows.map((r) => r.textLine),
     ];
 
-    const acceptedSection = acceptedRows.length > 0
-      ? [
-          "",
-          "ALREADY ACCEPTED / ALREADY PLACED — DO NOT DUPLICATE",
-          "-----------------------------------------------------",
-          ...acceptedRows.map((r) => r.textLine),
-        ]
-      : [];
+    const acceptedSection =
+      acceptedRows.length > 0
+        ? [
+            "",
+            "ALREADY ACCEPTED / ALREADY PLACED — DO NOT DUPLICATE",
+            "-----------------------------------------------------",
+            ...acceptedRows.map((r) => r.textLine),
+          ]
+        : [];
 
-    const previousSection = previousRows.length > 0
-      ? [
-          "",
-          "PREVIOUSLY SENT / NON-ACTIONABLE — BET NOT LOGGED",
-          "-------------------------------------------------",
-          ...previousRows.map((r) => r.textLine),
-        ]
-      : [];
+    const previousSection =
+      previousRows.length > 0
+        ? [
+            "",
+            "PREVIOUSLY SENT / NON-ACTIONABLE — BET NOT LOGGED",
+            "-------------------------------------------------",
+            ...previousRows.map((r) => r.textLine),
+          ]
+        : [];
 
     const footer = [
       "",
@@ -609,7 +738,12 @@ Deno.serve(async (req) => {
       `Logged excluded: ${loggedExcluded.length}`,
     ];
 
-    const emailText = [...actionSection, ...acceptedSection, ...previousSection, ...footer].join("\n");
+    const emailText = [
+      ...actionSection,
+      ...acceptedSection,
+      ...previousSection,
+      ...footer,
+    ].join("\n");
     const alertHash = await sha256Hex(
       JSON.stringify({
         snapshot_type: snapshotType,
@@ -730,7 +864,10 @@ Deno.serve(async (req) => {
 
       if (!postmarkRes.ok) {
         if (runId) {
-          await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
+          await supabase
+            .from("pers_sys_email_alert_runs")
+            .delete()
+            .eq("id", runId);
         }
         return new Response(
           JSON.stringify({
@@ -756,7 +893,11 @@ Deno.serve(async (req) => {
         side: String(r.signal.side ?? "").toUpperCase(),
         line_at_bet: r.signal.line_at_bet ?? null,
         book: r.preview.book ?? r.signal.exec_best_book ?? null,
-        price: r.preview.price ?? r.signal.exec_best_price ?? r.signal.ref_price ?? null,
+        price:
+          r.preview.price ??
+          r.signal.exec_best_price ??
+          r.signal.ref_price ??
+          null,
         stake_amount: r.preview.stake_amount ?? null,
         status_label: r.statusLabel,
       }));
@@ -800,7 +941,10 @@ Deno.serve(async (req) => {
       );
     } catch (sendErr) {
       if (runId) {
-        await supabase.from("pers_sys_email_alert_runs").delete().eq("id", runId);
+        await supabase
+          .from("pers_sys_email_alert_runs")
+          .delete()
+          .eq("id", runId);
       }
       throw sendErr;
     }

@@ -36,6 +36,7 @@ type WeatherBlockDisplay = {
   outcome: string | null;
   reason_code: string | null;
   policy_code: string | null;
+  operator_message?: string;
   no_data: boolean;
 };
 
@@ -208,13 +209,13 @@ function weatherStatus(c: Candidate): {
   if (!w) {
     if (isRoofedVenue(venue)) {
       return {
-        weather: "ROOF / INDOOR",
-        status: "PRICE CHECK ONLY",
+        weather: "ROOF / INDOOR — price/model check only; guide logic unchanged.",
+        status: "roof/indoor exemption",
         roofed: true,
       };
     }
     return {
-      weather: "CHECK WEATHER FIRST",
+      weather: "CHECK WEATHER FIRST — manual review required; guide logic unchanged.",
       status: "no weather block",
       roofed: false,
     };
@@ -222,13 +223,13 @@ function weatherStatus(c: Candidate): {
   if (w.no_data) {
     if (isRoofedVenue(venue)) {
       return {
-        weather: "ROOF / INDOOR",
-        status: "PRICE CHECK ONLY",
+        weather: "ROOF / INDOOR — price/model check only; guide logic unchanged.",
+        status: "roof/indoor exemption",
         roofed: true,
       };
     }
     return {
-      weather: "CHECK WEATHER FIRST",
+      weather: "CHECK WEATHER FIRST — manual review required; guide logic unchanged.",
       status: "no weather assessment found",
       roofed: false,
     };
@@ -239,38 +240,38 @@ function weatherStatus(c: Candidate): {
   switch (outcome) {
     case "FULL_STAKE":
       return {
-        weather: "Weather OK (clear)",
+        weather: "WEATHER OK — advisory only; guide logic unchanged.",
         status: `shadow · source ${src}${fbTag}`,
         roofed: false,
       };
     case "HALF_STAKE":
       return {
-        weather: "Weather caution — half-stake shadow",
+        weather: "WEATHER CAUTION — manual review required; guide logic unchanged.",
         status: `shadow · source ${src}${fbTag}`,
         roofed: false,
       };
     case "PASS":
       return {
-        weather: "Weather red — would suppress (shadow)",
+        weather: "WEATHER MANUAL PASS / REVIEW — manual review required; guide logic unchanged.",
         status: `shadow · source ${src}${fbTag}`,
         roofed: false,
       };
     case "NOT_APPLICABLE":
       return {
-        weather: "Roof / indoor — weather not applicable",
+        weather: "ROOF / INDOOR — price/model check only; guide logic unchanged.",
         status: `shadow · source ${src}${fbTag}`,
         roofed: true,
       };
     default:
       if (isRoofedVenue(venue)) {
         return {
-          weather: "ROOF / INDOOR",
-          status: "PRICE CHECK ONLY",
+          weather: "ROOF / INDOOR — price/model check only; guide logic unchanged.",
+          status: "roof/indoor exemption",
           roofed: true,
         };
       }
       return {
-        weather: "CHECK WEATHER FIRST",
+        weather: "CHECK WEATHER FIRST — manual review required; guide logic unchanged.",
         status: `unknown outcome${outcome ? `: ${outcome}` : ""}`,
         roofed: false,
       };
@@ -382,7 +383,7 @@ function renderMainHtml(c: Candidate): string {
     ? `Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
     : w.roofed
       ? `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-      : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
+      : `Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u; weather is manual/advisory only and guide logic is unchanged`;
   const statusText = warn ? warn.statusText : w.status;
   return `
     <div style="border:1px solid #ddd;padding:10px 12px;margin:10px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.55;">
@@ -405,7 +406,7 @@ function renderMainText(c: Candidate): string {
     ? `  Stake guide: 0u default (model output ${fmt(c.main_stake_guidance_u ?? 0, 1)}u retained for reference)`
     : w.roofed
       ? `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u`
-      : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u only if weather passes`;
+      : `  Stake guide: ${fmt(c.main_stake_guidance_u ?? 0, 1)}u; weather is manual/advisory only and guide logic is unchanged`;
   const statusText = warn ? warn.statusText : w.status;
   const lines = [
     `${c.home} v ${c.away} — ${c.venue}`,
@@ -460,7 +461,7 @@ function renderAltHtml(c: Candidate): string {
   const weatherNote =
     warn || w.roofed
       ? ""
-      : `<div style="margin-top:6px;font-style:italic;">Stake guide applies only if weather passes.</div>`;
+      : `<div style="margin-top:6px;font-style:italic;">Weather is manual/advisory only; guide logic is unchanged.</div>`;
   const statusText = warn ? warn.statusText : w.status;
 
   return `
@@ -520,7 +521,7 @@ function renderAltText(c: Candidate): string {
     }
   }
   if (!warn && !w.roofed)
-    lines.push(`  Stake guide applies only if weather passes.`);
+    lines.push(`  Weather is manual/advisory only; guide logic is unchanged.`);
   return lines.join("\n");
 }
 

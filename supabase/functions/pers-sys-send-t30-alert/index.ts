@@ -271,26 +271,30 @@ function weatherSummary(signal: SignalRow): string | null {
   const weather = r["weather"];
   if (!weather || typeof weather !== "object") return null;
   const w = weather as Record<string, unknown>;
-  const parts = [
-    w["weather_status"],
-    w["weather_outcome"],
-    w["weather_active_action"],
-  ]
-    .filter((v) => typeof v === "string" && v.trim().length > 0)
-    .map(String);
+  const status = String(w["weather_status"] ?? "").toUpperCase();
+  const outcome = String(w["weather_outcome"] ?? "").toUpperCase();
+  const action = String(w["weather_active_action"] ?? "").toUpperCase();
+  const reason = String(w["weather_reason_code"] ?? w["weather_active_reason"] ?? "").toLowerCase();
 
-  const source =
-    w["weather_active_decisioning_enabled_source"] ??
-    w["weather_active_decisioning_enabled_effective"];
-  if (typeof source === "string" && source.trim()) parts.push(`src=${source}`);
-  if (typeof source === "boolean") parts.push(`active=${source}`);
-
-  const reason = w["weather_reason_code"] ?? w["weather_active_reason"];
-  if (typeof reason === "string" && reason.trim() && !parts.includes(reason)) {
-    parts.push(`reason=${reason}`);
+  let instruction: string;
+  if (status === "NOT_APPLICABLE" || outcome === "NOT_APPLICABLE" || reason === "indoor_venue") {
+    instruction = "ROOF / INDOOR — weather not a gating factor; model logic unchanged.";
+  } else if (status === "NOT_FOUND" || status === "NOT_ENABLED" || status === "ERROR" || !status) {
+    instruction = "CHECK WEATHER FIRST — no usable T30 weather assessment found; manual review required before acting.";
+  } else if (outcome === "FULL_STAKE" || action === "WOULD_ACTIVE_KEEP_FULL_STAKE") {
+    instruction = "WEATHER OK — advisory only; model logic unchanged.";
+  } else if (outcome === "HALF_STAKE" || action === "WOULD_ACTIVE_HALF_STAKE") {
+    instruction = "WEATHER CAUTION — manual review before betting; no automatic stake or eligibility change applied.";
+  } else if (outcome === "PASS" || action === "WOULD_ACTIVE_SUPPRESS") {
+    instruction = "WEATHER MANUAL PASS / REVIEW — manual review required before acting; no automatic suppression applied.";
+  } else {
+    instruction = "WEATHER CAUTION — manual review before betting; no automatic stake or eligibility change applied.";
   }
 
-  return parts.length ? `Weather: ${parts.join(" / ")}` : null;
+  const context = [status, outcome]
+    .filter((v) => v && v !== "NULL")
+    .join(" / ");
+  return context ? `Weather: ${instruction} (${context})` : `Weather: ${instruction}`;
 }
 
 function buildTextLine(row: CandidateRow): string {

@@ -1,9 +1,11 @@
 // SYS_10A Manual Total Guide — notification pathway.
 //
 // Fully isolated from the ACTION NOW / T30 alerter.
-// - Calls pers-sys-sys10a-report (read-only).
+// - Calls pers-sys-sys10a-report for guide generation.
 // - Sends a single Postmark email if at least one ACTIONABLE candidate exists.
-// - No DB writes. No signals. No bet RPCs. No alert dedupe tables touched.
+// - No signals. No bets. No alert dedupe writes.
+// - May perform non-fatal weather-only seed writes to
+//   pers_sys_weather_snapshots / pers_sys_weather_assessments before rendering.
 // - Wording/layout only: weather is NOT included in SYS_10A email decisioning.
 
 const corsHeaders = {
@@ -557,6 +559,9 @@ Deno.serve(async (req) => {
       req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const daysAhead = Number(body.days_ahead ?? 10);
     const dryRun = body.dry_run === true;
+    const seedWeather = dryRun
+      ? body.seed_weather === true
+      : body.seed_weather !== false;
 
     const loadReport = async () => {
       const reportRes = await fetch(
@@ -585,16 +590,19 @@ Deno.serve(async (req) => {
     };
     try {
       const initialReportJson = await loadReport();
-      const seedGameIds = uniqueGuideGameIds(
-        (initialReportJson.candidates ?? []) as Candidate[],
-      );
-      weatherSeed = await seedSys10aWeatherForGuideGames(
-        supabaseUrl,
-        anonKey,
-        seedGameIds,
-      );
-      // Reload the read-only report so the email renders the assessments just seeded.
-      reportJson = await loadReport();
+      reportJson = initialReportJson;
+      if (seedWeather) {
+        const seedGameIds = uniqueGuideGameIds(
+          (initialReportJson.candidates ?? []) as Candidate[],
+        );
+        weatherSeed = await seedSys10aWeatherForGuideGames(
+          supabaseUrl,
+          anonKey,
+          seedGameIds,
+        );
+        // Reload the read-only report so the email renders the assessments just seeded.
+        reportJson = await loadReport();
+      }
     } catch (err) {
       const e = err as { status?: number; response?: unknown };
       return new Response(
@@ -705,6 +713,8 @@ Deno.serve(async (req) => {
         JSON.stringify({
           ok: true,
           dry_run: true,
+          seed_weather: seedWeather,
+          dry_run_weather_seed_writes_possible: seedWeather,
           subject,
           actionable_candidates: candidates.length,
           suppressed_count: suppressed.length,

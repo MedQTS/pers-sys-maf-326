@@ -97,8 +97,27 @@ type WeatherBlockDisplay = {
   outcome: string | null;
   reason_code: string | null;
   policy_code: string | null;
+  operator_message: string;
   no_data: boolean;
 };
+
+function weatherOperatorMessage(outcome: string | null, noData: boolean): string {
+  if (noData) {
+    return "CHECK WEATHER FIRST — manual review required; guide logic unchanged.";
+  }
+  switch (String(outcome ?? "").toUpperCase()) {
+    case "FULL_STAKE":
+      return "WEATHER OK — advisory only; guide logic unchanged.";
+    case "HALF_STAKE":
+      return "WEATHER CAUTION — manual review required; guide logic unchanged.";
+    case "PASS":
+      return "WEATHER MANUAL PASS / REVIEW — manual review required; guide logic unchanged.";
+    case "NOT_APPLICABLE":
+      return "ROOF / INDOOR — price/model check only; guide logic unchanged.";
+    default:
+      return "CHECK WEATHER FIRST — manual review required; guide logic unchanged.";
+  }
+}
 
 async function fetchWeatherBlockDisplay(
   supabase: ReturnType<typeof createClient>,
@@ -113,6 +132,7 @@ async function fetchWeatherBlockDisplay(
     outcome: null,
     reason_code: null,
     policy_code: null,
+    operator_message: weatherOperatorMessage(null, true),
     no_data: true,
   };
   try {
@@ -133,6 +153,7 @@ async function fetchWeatherBlockDisplay(
         outcome: (primary as any).outcome ?? null,
         reason_code: (primary as any).reason_code ?? null,
         policy_code: (primary as any).policy_code ?? null,
+        operator_message: weatherOperatorMessage((primary as any).outcome ?? null, false),
         no_data: false,
       };
     }
@@ -153,6 +174,7 @@ async function fetchWeatherBlockDisplay(
         outcome: (fb as any).outcome ?? null,
         reason_code: (fb as any).reason_code ?? null,
         policy_code: (fb as any).policy_code ?? null,
+        operator_message: weatherOperatorMessage((fb as any).outcome ?? null, false),
         no_data: false,
       };
     }
